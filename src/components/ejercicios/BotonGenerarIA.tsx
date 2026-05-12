@@ -42,6 +42,9 @@ export default function BotonGenerarIA({ global = false, onSuccess }: BotonGener
       if (data.success) {
         setModalAbierto(false);
         setTema('');
+        if (data.generatedWith === 'fallback') {
+          alert('Gemini no respondió correctamente, pero se crearon ejercicios de respaldo con el tema indicado.');
+        }
         if (onSuccess) {
           await onSuccess();
         } else {

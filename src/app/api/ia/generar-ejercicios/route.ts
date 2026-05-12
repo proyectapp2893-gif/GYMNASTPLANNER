@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
-import { extractJsonArray, generateTextWithRetry, getGeminiModelCandidates, isGeminiModelUnavailableError, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
+import { buildFallbackGeneratedExercises, extractJsonArray, generateTextWithRetry, getGeminiModelCandidates, isGeminiModelUnavailableError, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
 import { createSupabaseServerClient, createSupabaseServiceClient, getAuthenticatedClub } from '../../../../lib/supabase-server'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
@@ -42,10 +42,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado para crear ejercicios globales' }, { status: 403 })
     }
 
-    if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY no configurada' }, { status: 503 })
-    }
-
     const cant = cantidad;
     const enfoque = tema;
 
@@ -68,30 +64,38 @@ export async function POST(request: Request) {
       ]
     `
 
-    // Limpieza extrema del JSON por si Gemini envía texto extra
-    const responseText = await generateTextWithRetry(async () => {
-      let lastError: unknown
+    let ejerciciosParaGuardar = buildFallbackGeneratedExercises(enfoque, cant, global ? null : authClub.clubId)
+    let generatedWith = 'fallback'
 
-      for (const modelName of modelCandidates) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName })
-          const result = await model.generateContent(prompt)
-          return result.response.text()
-        } catch (error) {
-          lastError = error
-          if (!isGeminiModelUnavailableError(error)) throw error
+    if (apiKey) {
+      try {
+        // Limpieza extrema del JSON por si Gemini envía texto extra
+        const responseText = await generateTextWithRetry(async () => {
+          let lastError: unknown
+
+          for (const modelName of modelCandidates) {
+            try {
+              const model = genAI.getGenerativeModel({ model: modelName })
+              const result = await model.generateContent(prompt)
+              generatedWith = modelName
+              return result.response.text()
+            } catch (error) {
+              lastError = error
+              if (!isGeminiModelUnavailableError(error)) throw error
+            }
+          }
+
+          throw lastError
+        })
+        const ejerciciosGenerados = extractJsonArray(responseText)
+        const ejerciciosIA = normalizeGeneratedExercises(ejerciciosGenerados, global ? null : authClub.clubId)
+
+        if (ejerciciosIA.length > 0) {
+          ejerciciosParaGuardar = ejerciciosIA
         }
+      } catch (error) {
+        console.error('Fallback ejercicios IA:', error)
       }
-
-      throw lastError
-    })
-    const ejerciciosGenerados = extractJsonArray(responseText)
-
-    // Agregamos la capa de seguridad Multiclub
-    const ejerciciosParaGuardar = normalizeGeneratedExercises(ejerciciosGenerados, global ? null : authClub.clubId)
-
-    if (ejerciciosParaGuardar.length === 0) {
-      return NextResponse.json({ error: 'La IA no devolvió ejercicios válidos' }, { status: 502 })
     }
 
     // Inserción directa en la base de datos
@@ -101,7 +105,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, count: ejerciciosParaGuardar.length })
+    return NextResponse.json({ success: true, count: ejerciciosParaGuardar.length, generatedWith })
 
   } catch (error) {
     console.error('Error generando ejercicios:', error)

@@ -1,12 +1,16 @@
 import { normalizeExerciseInput } from './exercise-normalization'
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
 
 export function getGeminiModelCandidates(configuredModel?: string | null) {
+  const configured = configuredModel?.trim()
+  const configuredIsDeprecated = configured === 'gemini-1.5-flash' || configured === 'gemini-1.5-pro'
+
   return [
-    configuredModel,
+    configured && !configuredIsDeprecated ? configured : null,
     DEFAULT_GEMINI_MODEL,
-    'gemini-flash-latest',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
   ].filter((model, index, models): model is string => {
     return Boolean(model && models.indexOf(model) === index)
@@ -137,6 +141,58 @@ export function normalizeGeneratedExercises(raw: unknown, clubId?: string | null
     .filter(item => item.nombre && item.descripcion_corta)
 }
 
+export function buildFallbackGeneratedExercises(tema: string, cantidad: number, clubId?: string | null) {
+  const focus = cleanString(tema, 80) || 'Gimnasia general'
+  const apparatus = inferApparatus(focus)
+  const category = inferCategory(focus)
+
+  const templates = [
+    {
+      suffix: 'progresivo tecnico',
+      descripcion_corta: `Progresion controlada para ${focus}`,
+      rangos_repeticiones: '3-4 series x 6-8 reps',
+      dificultad: 'Básico',
+    },
+    {
+      suffix: 'con asistencia',
+      descripcion_corta: `Ejecucion asistida enfocada en ${focus}`,
+      rangos_repeticiones: '3 series x 5-8 reps',
+      dificultad: 'Intermedio',
+    },
+    {
+      suffix: 'por estaciones',
+      descripcion_corta: `Circuito corto para reforzar ${focus}`,
+      rangos_repeticiones: '30-45 seg por estacion',
+      dificultad: 'Básico',
+    },
+    {
+      suffix: 'de precision',
+      descripcion_corta: `Trabajo de calidad tecnica en ${focus}`,
+      rangos_repeticiones: '4 series x 4-6 reps',
+      dificultad: 'Avanzado',
+    },
+    {
+      suffix: 'con control postural',
+      descripcion_corta: `Control corporal aplicado a ${focus}`,
+      rangos_repeticiones: '3 series x 20-30 seg',
+      dificultad: 'Intermedio',
+    },
+  ]
+
+  return Array.from({ length: Math.max(1, Math.min(cantidad, 15)) }, (_, index) => {
+    const template = templates[index % templates.length]
+    return normalizeExerciseInput({
+      nombre: `${capitalize(focus)} - ${template.suffix} ${index + 1}`,
+      categoria: category,
+      aparato: apparatus,
+      dificultad: template.dificultad,
+      descripcion_corta: template.descripcion_corta,
+      rangos_repeticiones: template.rangos_repeticiones,
+      etiquetas: `${focus}, progresion, tecnica`,
+    }, clubId)
+  })
+}
+
 export function normalizeSingleDose(raw: unknown) {
   if (!isRecord(raw)) return DEFAULT_DOSE
   return {
@@ -182,4 +238,27 @@ function normalize(value: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function inferApparatus(value: string) {
+  const normalized = normalize(value)
+  if (normalized.includes('barra')) return 'Barras Asimétricas'
+  if (normalized.includes('viga')) return 'Viga de Equilibrio'
+  if (normalized.includes('salto')) return 'Salto'
+  if (normalized.includes('tramp') || normalized.includes('tumbling')) return 'Trampolín / Tumbling'
+  if (normalized.includes('suelo') || normalized.includes('piso') || normalized.includes('roll')) return 'Suelo'
+  return 'General / Ninguno'
+}
+
+function inferCategory(value: string) {
+  const normalized = normalize(value)
+  if (normalized.includes('calent')) return 'Calentamiento'
+  if (normalized.includes('flex')) return 'Flexibilidad'
+  if (normalized.includes('fisic') || normalized.includes('fuerza') || normalized.includes('core')) return 'Prep. Física - General'
+  if (normalized.includes('rutina') || normalized.includes('pasada')) return 'Rutina Completa'
+  return 'Técnico'
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
