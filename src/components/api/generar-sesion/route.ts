@@ -1,36 +1,21 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 import {
   buildFallbackSession,
   extractJsonObject,
   generateTextWithRetry,
-  getGeminiModelCandidates,
-  isGeminiModelUnavailableError,
   normalizeSingleDose,
   sanitizeSessionResponse,
   type CatalogExercise,
 } from '../../../lib/ai-helpers'
+import { generateGeminiTextRest } from '../../../lib/gemini-rest'
 import { getAuthenticatedClub } from '../../../lib/supabase-server'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
+const apiKey = process.env.GEMINI_API_KEY || ''
 
 async function generateGeminiText(prompt: string) {
-  let lastError: unknown
-
-  for (const modelName of modelCandidates) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName })
-      const result = await model.generateContent(prompt)
-      return result.response.text()
-    } catch (error) {
-      lastError = error
-      if (!isGeminiModelUnavailableError(error)) throw error
-    }
-  }
-
-  throw lastError
+  const result = await generateGeminiTextRest(prompt, apiKey)
+  return result.text
 }
 
 const sessionSchema = z.object({
@@ -167,7 +152,7 @@ export async function POST(request: Request) {
     const { data: ejercicios } = await ejerciciosQuery
     const catalogoCompleto = (ejercicios || []) as CatalogExercise[]
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!apiKey) {
       return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo))
     }
 

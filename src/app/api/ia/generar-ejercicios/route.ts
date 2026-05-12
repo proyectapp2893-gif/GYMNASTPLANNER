@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
-import { buildFallbackGeneratedExercises, extractJsonArray, generateTextWithRetry, getGeminiModelCandidates, isGeminiModelUnavailableError, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
+import { buildFallbackGeneratedExercises, extractJsonArray, generateTextWithRetry, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
+import { generateGeminiTextRest } from '../../../../lib/gemini-rest'
 import { createSupabaseServerClient, createSupabaseServiceClient, getAuthenticatedClub } from '../../../../lib/supabase-server'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
-const genAI = new GoogleGenerativeAI(apiKey)
-const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
 
 const generarEjerciciosSchema = z.object({
@@ -71,21 +69,9 @@ export async function POST(request: Request) {
       try {
         // Limpieza extrema del JSON por si Gemini envía texto extra
         const responseText = await generateTextWithRetry(async () => {
-          let lastError: unknown
-
-          for (const modelName of modelCandidates) {
-            try {
-              const model = genAI.getGenerativeModel({ model: modelName })
-              const result = await model.generateContent(prompt)
-              generatedWith = modelName
-              return result.response.text()
-            } catch (error) {
-              lastError = error
-              if (!isGeminiModelUnavailableError(error)) throw error
-            }
-          }
-
-          throw lastError
+          const result = await generateGeminiTextRest(prompt, apiKey)
+          generatedWith = result.modelName
+          return result.text
         })
         const ejerciciosGenerados = extractJsonArray(responseText)
         const ejerciciosIA = normalizeGeneratedExercises(ejerciciosGenerados, global ? null : authClub.clubId)

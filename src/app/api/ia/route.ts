@@ -1,40 +1,24 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 import {
   buildFallbackSession,
   extractJsonObject,
   generateTextWithRetry,
-  getGeminiModelCandidates,
-  isGeminiModelUnavailableError,
   limitCatalogForPrompt,
   normalizeSingleDose,
   sanitizeSessionResponse,
   type CatalogExercise,
 } from '../../../lib/ai-helpers'
+import { generateGeminiTextRest } from '../../../lib/gemini-rest'
 import { getAuthenticatedClub } from '../../../lib/supabase-server'
 import { summarizePhysicalTestsForAI } from '../../../lib/physical-tests'
 import { getCompetitionProximityForDate } from '../../../lib/sports-planning'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
-const genAI = new GoogleGenerativeAI(apiKey)
-const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
 
 async function generateGeminiText(prompt: string) {
-  let lastError: unknown
-
-  for (const modelName of modelCandidates) {
-    try {
-      const model = genAI.getGenerativeModel({ model: modelName })
-      const result = await model.generateContent(prompt)
-      return result.response.text()
-    } catch (error) {
-      lastError = error
-      if (!isGeminiModelUnavailableError(error)) throw error
-    }
-  }
-
-  throw lastError
+  const result = await generateGeminiTextRest(prompt, apiKey)
+  return result.text
 }
 
 const aiRequestSchema = z.object({
