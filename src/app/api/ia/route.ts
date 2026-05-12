@@ -5,6 +5,8 @@ import {
   buildFallbackSession,
   extractJsonObject,
   generateTextWithRetry,
+  getGeminiModelCandidates,
+  isGeminiModelUnavailableError,
   limitCatalogForPrompt,
   normalizeSingleDose,
   sanitizeSessionResponse,
@@ -16,7 +18,24 @@ import { getCompetitionProximityForDate } from '../../../lib/sports-planning'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
 const genAI = new GoogleGenerativeAI(apiKey)
-const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
+
+async function generateGeminiText(prompt: string) {
+  let lastError: unknown
+
+  for (const modelName of modelCandidates) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const result = await model.generateContent(prompt)
+      return result.response.text()
+    } catch (error) {
+      lastError = error
+      if (!isGeminiModelUnavailableError(error)) throw error
+    }
+  }
+
+  throw lastError
+}
 
 const aiRequestSchema = z.object({
   grupoId: z.string().min(1).optional().or(z.literal('')),
@@ -120,8 +139,6 @@ export async function POST(request: Request) {
       return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo))
     }
 
-    const model = genAI.getGenerativeModel({ model: modelName })
-
     // 🔥 MODO FRANCOTIRADOR
     if (isSingle && ejercicioUnico) {
       const ejercicio = isRecord(ejercicioUnico) ? ejercicioUnico : {}
@@ -155,10 +172,7 @@ export async function POST(request: Request) {
         }
       `
       try {
-        const responseText = await generateTextWithRetry(async () => {
-          const result = await model.generateContent(promptSingle)
-          return result.response.text()
-        })
+        const responseText = await generateTextWithRetry(() => generateGeminiText(promptSingle))
         return NextResponse.json(normalizeSingleDose(extractJsonObject(responseText)))
       } catch (error) {
         console.error('Fallback dosificacion IA:', error)
@@ -197,10 +211,7 @@ export async function POST(request: Request) {
       }
     `
     try {
-      const responseText = await generateTextWithRetry(async () => {
-        const result = await model.generateContent(prompt)
-        return result.response.text()
-      })
+      const responseText = await generateTextWithRetry(() => generateGeminiText(prompt))
       const sanitized = sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto)
       return NextResponse.json(sanitized)
     } catch (error) {

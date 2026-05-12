@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
-import { extractJsonArray, generateTextWithRetry, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
+import { extractJsonArray, generateTextWithRetry, getGeminiModelCandidates, isGeminiModelUnavailableError, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
 import { createSupabaseServerClient, createSupabaseServiceClient, getAuthenticatedClub } from '../../../../lib/supabase-server'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
 const genAI = new GoogleGenerativeAI(apiKey)
-const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
 
 const generarEjerciciosSchema = z.object({
@@ -68,12 +68,22 @@ export async function POST(request: Request) {
       ]
     `
 
-    const model = genAI.getGenerativeModel({ model: modelName })
-    
     // Limpieza extrema del JSON por si Gemini envía texto extra
     const responseText = await generateTextWithRetry(async () => {
-      const result = await model.generateContent(prompt)
-      return result.response.text()
+      let lastError: unknown
+
+      for (const modelName of modelCandidates) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName })
+          const result = await model.generateContent(prompt)
+          return result.response.text()
+        } catch (error) {
+          lastError = error
+          if (!isGeminiModelUnavailableError(error)) throw error
+        }
+      }
+
+      throw lastError
     })
     const ejerciciosGenerados = extractJsonArray(responseText)
 

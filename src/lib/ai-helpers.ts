@@ -1,5 +1,23 @@
 import { normalizeExerciseInput } from './exercise-normalization'
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
+
+export function getGeminiModelCandidates(configuredModel?: string | null) {
+  return [
+    configuredModel,
+    DEFAULT_GEMINI_MODEL,
+    'gemini-flash-latest',
+    'gemini-2.0-flash-lite',
+  ].filter((model, index, models): model is string => {
+    return Boolean(model && models.indexOf(model) === index)
+  })
+}
+
+export function isGeminiModelUnavailableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('404 Not Found') || message.includes('is not found') || message.includes('not supported for generateContent')
+}
+
 export type CatalogExercise = {
   id: string
   nombre?: string | null

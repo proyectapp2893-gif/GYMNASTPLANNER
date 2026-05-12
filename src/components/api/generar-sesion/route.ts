@@ -5,6 +5,8 @@ import {
   buildFallbackSession,
   extractJsonObject,
   generateTextWithRetry,
+  getGeminiModelCandidates,
+  isGeminiModelUnavailableError,
   normalizeSingleDose,
   sanitizeSessionResponse,
   type CatalogExercise,
@@ -12,7 +14,24 @@ import {
 import { getAuthenticatedClub } from '../../../lib/supabase-server'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const modelCandidates = getGeminiModelCandidates(process.env.GEMINI_MODEL)
+
+async function generateGeminiText(prompt: string) {
+  let lastError: unknown
+
+  for (const modelName of modelCandidates) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const result = await model.generateContent(prompt)
+      return result.response.text()
+    } catch (error) {
+      lastError = error
+      if (!isGeminiModelUnavailableError(error)) throw error
+    }
+  }
+
+  throw lastError
+}
 
 const sessionSchema = z.object({
   isSingle: z.boolean().optional(),
@@ -40,8 +59,6 @@ export async function POST(request: Request) {
 
     // 🔥 NUEVO: Recibimos las competencias secundarias, los días de entrenamiento y la fecha de la sesión actual
     const { isSingle, ejercicioUnico, nivel, objetivo, semana, enfoqueDia, competenciasSecundarias, diasEntrenamiento, fechaSesionActual } = parsed.data
-
-    const model = genAI.getGenerativeModel({ model: modelName })
 
     // ============================================================================
     // CASO 1: ARRASTRAR Y SOLTAR (Calcula dosis de 1 solo ejercicio en tiempo real)
@@ -96,10 +113,7 @@ export async function POST(request: Request) {
         }
       `
       try {
-        const responseText = await generateTextWithRetry(async () => {
-          const result = await model.generateContent(prompt)
-          return result.response.text()
-        })
+        const responseText = await generateTextWithRetry(() => generateGeminiText(prompt))
         return NextResponse.json(normalizeSingleDose(extractJsonObject(responseText)))
       } catch (error) {
         console.error('Fallback dosificacion IA:', error)
@@ -189,10 +203,7 @@ export async function POST(request: Request) {
       }
     `
     try {
-      const responseText = await generateTextWithRetry(async () => {
-        const result = await model.generateContent(prompt)
-        return result.response.text()
-      })
+      const responseText = await generateTextWithRetry(() => generateGeminiText(prompt))
       return NextResponse.json(sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto))
     } catch (error) {
       console.error('Fallback sesion IA:', error)
