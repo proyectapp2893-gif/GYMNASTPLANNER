@@ -25,6 +25,31 @@ export default function LoginPage() {
   // 🔥 TU LLAVE MAESTRA
   const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com';
 
+  const enviarRecuperacion = async () => {
+    setError(null);
+    setMensajeExito(null);
+
+    if (!email.trim()) {
+      setError('Escribe el correo de la cuenta para enviar el enlace de recuperación.');
+      return;
+    }
+
+    setCargando(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (resetError) throw resetError;
+
+      setMensajeExito('Si el correo existe, enviaremos un enlace para restablecer la contraseña.');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setCargando(false);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setCargando(true);
@@ -181,7 +206,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Contraseña</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">Contraseña</label>
+                {isLogin && (
+                  <button type="button" onClick={enviarRecuperacion} disabled={cargando} className="text-[11px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-widest disabled:opacity-50">
+                    Olvidé mi contraseña
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-slate-400" /></div>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-600 outline-none" />

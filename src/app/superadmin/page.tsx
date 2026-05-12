@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag } from 'lucide-react';
+import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag, UserPlus, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BotonGenerarIA from '../../components/ejercicios/BotonGenerarIA';
@@ -21,6 +21,17 @@ type EjercicioCSV = Omit<EjercicioGlobal, 'id'> & {
   club_id: null
 }
 
+type AdminUser = {
+  id: string
+  email: string
+  nombre: string
+  club_id: string | null
+  club_nombre: string | null
+  created_at?: string | null
+  last_sign_in_at?: string | null
+  disabled: boolean
+}
+
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido'
 
 export default function SuperAdminPage() {
@@ -31,7 +42,7 @@ export default function SuperAdminPage() {
   const [autorizado, setAutorizado] = useState(false); 
   const [mensajeError, setMensajeError] = useState(''); 
   
-  const [pestañaActiva, setPestañaActiva] = useState<'clubes' | 'biblioteca'>('clubes');
+  const [pestañaActiva, setPestañaActiva] = useState<'clubes' | 'usuarios' | 'biblioteca'>('clubes');
 
   const [ejerciciosGlobales, setEjerciciosGlobales] = useState<EjercicioGlobal[]>([]);
   const [nuevoEjNombre, setNuevoEjNombre] = useState('');
@@ -62,12 +73,17 @@ export default function SuperAdminPage() {
   const [ejercicioEditando, setEjercicioEditando] = useState<EjercicioGlobal | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
+  const [usuarios, setUsuarios] = useState<AdminUser[]>([]);
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const [creandoUsuario, setCreandoUsuario] = useState(false);
+  const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '' });
+
   const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com'; 
 
-  const mostrarAviso = (mensaje: string, tipo: 'exito' | 'error' = 'exito') => {
+  const mostrarAviso = useCallback((mensaje: string, tipo: 'exito' | 'error' = 'exito') => {
     setToast({ mensaje, tipo });
     setTimeout(() => setToast(null), 3500);
-  };
+  }, []);
 
   const cargarDatos = useCallback(async () => {
     const { data: clubesData } = await supabase.from('clubs').select('*').order('estado', { ascending: false }); 
@@ -78,6 +94,20 @@ export default function SuperAdminPage() {
 
     setCargando(false);
   }, []);
+
+  const cargarUsuarios = useCallback(async () => {
+    setCargandoUsuarios(true);
+    try {
+      const response = await fetch('/api/admin/users');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los usuarios');
+      setUsuarios(data.users || []);
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    } finally {
+      setCargandoUsuarios(false);
+    }
+  }, [mostrarAviso]);
 
   const verificarSeguridad = useCallback(async () => {
     setCargando(true);
@@ -102,6 +132,87 @@ export default function SuperAdminPage() {
   useEffect(() => {
     void verificarSeguridad();
   }, [verificarSeguridad]);
+
+  useEffect(() => {
+    if (autorizado && pestañaActiva === 'usuarios') void cargarUsuarios();
+  }, [autorizado, cargarUsuarios, pestañaActiva]);
+
+  const crearUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoUsuario.clubId) {
+      mostrarAviso('Selecciona un club para el usuario.', 'error');
+      return;
+    }
+
+    setCreandoUsuario(true);
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoUsuario),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo crear el usuario');
+
+      setNuevoUsuario({ email: '', password: '', nombre: '', clubId: '' });
+      await cargarUsuarios();
+      mostrarAviso('Usuario creado correctamente.', 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    } finally {
+      setCreandoUsuario(false);
+    }
+  };
+
+  const cambiarPasswordUsuario = async (userId: string) => {
+    const password = window.prompt('Nueva contraseña para este usuario (mínimo 8 caracteres):');
+    if (!password) return;
+
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'password', userId, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo cambiar la contraseña');
+      mostrarAviso('Contraseña actualizada.', 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    }
+  };
+
+  const cambiarEstadoUsuario = async (userId: string, disabled: boolean) => {
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: disabled ? 'enable' : 'disable', userId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo actualizar el usuario');
+      await cargarUsuarios();
+      mostrarAviso(disabled ? 'Usuario reactivado.' : 'Usuario desactivado.', 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    }
+  };
+
+  const eliminarUsuario = async (userId: string, email: string) => {
+    if (!confirm(`¿Eliminar permanentemente el usuario ${email}? Esta acción no se puede deshacer.`)) return;
+
+    try {
+      const response = await fetch(`/api/admin/users?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo eliminar el usuario');
+      await cargarUsuarios();
+      mostrarAviso('Usuario eliminado.', 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    }
+  };
 
   const cambiarEstadoClub = async (id: string, nuevoEstado: string) => {
     const { error } = await supabase.from('clubs').update({ estado: nuevoEstado }).eq('id', id);
@@ -571,6 +682,12 @@ export default function SuperAdminPage() {
             <Building2 className="w-4 h-4" /> Gestión de Clubes
           </button>
           <button 
+            onClick={() => setPestañaActiva('usuarios')} 
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${pestañaActiva === 'usuarios' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'}`}
+          >
+            <UserPlus className="w-4 h-4" /> Usuarios ({usuarios.length})
+          </button>
+          <button 
             onClick={() => setPestañaActiva('biblioteca')} 
             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${pestañaActiva === 'biblioteca' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'}`}
           >
@@ -620,6 +737,100 @@ export default function SuperAdminPage() {
              </table>
            </div>
          </div>
+        )}
+
+        {pestañaActiva === 'usuarios' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in duration-300">
+            <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl h-fit">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg"><UserPlus className="w-5 h-5" /></div>
+                <h2 className="text-xl font-bold text-white">Crear Usuario</h2>
+              </div>
+
+              <form onSubmit={crearUsuario} className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nombre</label>
+                  <input required type="text" value={nuevoUsuario.nombre} onChange={e => setNuevoUsuario({ ...nuevoUsuario, nombre: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Correo</label>
+                  <input required type="email" value={nuevoUsuario.email} onChange={e => setNuevoUsuario({ ...nuevoUsuario, email: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Contraseña inicial</label>
+                  <input required type="password" minLength={8} value={nuevoUsuario.password} onChange={e => setNuevoUsuario({ ...nuevoUsuario, password: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Club</label>
+                  <select required value={nuevoUsuario.clubId} onChange={e => setNuevoUsuario({ ...nuevoUsuario, clubId: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold">
+                    <option value="">Seleccionar club...</option>
+                    {clubes.map(club => <option key={club.id} value={club.id}>{club.nombre}</option>)}
+                  </select>
+                </div>
+                <button type="submit" disabled={creandoUsuario} className="mt-4 w-full py-3 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-500 transition-colors flex justify-center items-center gap-2">
+                  {creandoUsuario ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Crear Usuario'}
+                </button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 bg-slate-800 rounded-3xl overflow-hidden border border-slate-700 shadow-xl">
+              <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Usuarios del Sistema</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">{usuarios.length} cuentas registradas</p>
+                </div>
+                <button onClick={cargarUsuarios} disabled={cargandoUsuarios} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-bold transition-colors">
+                  {cargandoUsuarios ? 'Cargando...' : 'Actualizar'}
+                </button>
+              </div>
+
+              {cargandoUsuarios ? (
+                <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-400" /></div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[780px]">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-400 text-xs uppercase tracking-widest font-black">
+                        <th className="p-4">Usuario</th>
+                        <th className="p-4">Club</th>
+                        <th className="p-4 text-center">Estado</th>
+                        <th className="p-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700">
+                      {usuarios.map((usuario) => (
+                        <tr key={usuario.id} className="hover:bg-slate-800/50 transition-colors">
+                          <td className="p-4">
+                            <p className="font-bold text-white">{usuario.nombre || 'Sin nombre'}</p>
+                            <p className="text-xs text-slate-400">{usuario.email}</p>
+                          </td>
+                          <td className="p-4 text-sm text-slate-300">{usuario.club_nombre || 'Sin club'}</td>
+                          <td className="p-4 text-center">
+                            <span className={`inline-block px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${usuario.disabled ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
+                              {usuario.disabled ? 'Desactivado' : 'Activo'}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex justify-end gap-2">
+                              <button onClick={() => cambiarPasswordUsuario(usuario.id)} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                                <KeyRound className="w-3 h-3" /> Clave
+                              </button>
+                              <button onClick={() => cambiarEstadoUsuario(usuario.id, usuario.disabled)} className={`px-3 py-2 rounded-lg text-xs font-bold ${usuario.disabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}>
+                                {usuario.disabled ? 'Reactivar' : 'Desactivar'}
+                              </button>
+                              <button onClick={() => eliminarUsuario(usuario.id, usuario.email)} className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold">
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {pestañaActiva === 'biblioteca' && (
