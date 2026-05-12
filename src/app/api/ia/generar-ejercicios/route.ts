@@ -1,28 +1,38 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { supabase } from '../../../../lib/supabase' // Ajusta esta ruta si es diferente en tu archivo original
+import { z } from 'zod'
+import { extractJsonArray, generateTextWithRetry, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
+import { getAuthenticatedClub } from '../../../../lib/supabase-server'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
 const genAI = new GoogleGenerativeAI(apiKey)
+const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+
+const generarEjerciciosSchema = z.object({
+  tema: z.string().trim().min(3).max(120),
+  cantidad: z.coerce.number().int().min(1).max(15).default(5),
+})
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({})); 
-    // 🔥 Recibimos el clubId (seguridad), el tema y la cantidad desde el nuevo modal
-    const { clubId, tema, cantidad } = body;
+    const { supabase, clubId, error: authError } = await getAuthenticatedClub()
+    if (authError || !clubId) {
+      return NextResponse.json({ error: authError || 'No autenticado' }, { status: 401 })
+    }
 
-    const cant = cantidad || 10;
-    const enfoque = tema || 'ejercicios variados de gimnasia artística';
+    const parsed = generarEjerciciosSchema.safeParse(await request.json().catch(() => ({})))
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
+    }
 
-    const urlModelos = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-    const respuestaModelos = await fetch(urlModelos)
-    const datosModelos = await respuestaModelos.json()
-    const modelosValidos = datosModelos.models || []
-    const modeloIdeal = modelosValidos.find((m: any) => 
-      m.supportedGenerationMethods?.includes('generateContent') && 
-      (m.name.includes('flash') || m.name.includes('pro'))
-    )
-    const nombreModelo = modeloIdeal ? modeloIdeal.name.replace('models/', '') : 'gemini-1.5-flash'
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GEMINI_API_KEY no configurada' }, { status: 503 })
+    }
+
+    const { tema, cantidad } = parsed.data
+
+    const cant = cantidad;
+    const enfoque = tema;
 
     // 🔥 EL NUEVO PROMPT DINÁMICO Y ESTRICTO
     const prompt = `
@@ -43,20 +53,21 @@ export async function POST(request: Request) {
       ]
     `
 
-    const model = genAI.getGenerativeModel({ model: nombreModelo })
-    const result = await model.generateContent(prompt)
+    const model = genAI.getGenerativeModel({ model: modelName })
     
     // Limpieza extrema del JSON por si Gemini envía texto extra
-    const responseText = result.response.text()
-    const cleanJson = responseText.substring(responseText.indexOf('['), responseText.lastIndexOf(']') + 1) || responseText.replace(/```json/g, '').replace(/```/g, '').trim()
-    
-    const ejerciciosGenerados = JSON.parse(cleanJson)
+    const responseText = await generateTextWithRetry(async () => {
+      const result = await model.generateContent(prompt)
+      return result.response.text()
+    })
+    const ejerciciosGenerados = extractJsonArray(responseText)
 
     // Agregamos la capa de seguridad Multiclub
-    const ejerciciosParaGuardar = ejerciciosGenerados.map((ej: any) => ({
-      ...ej,
-      club_id: clubId || null 
-    }))
+    const ejerciciosParaGuardar = normalizeGeneratedExercises(ejerciciosGenerados, clubId)
+
+    if (ejerciciosParaGuardar.length === 0) {
+      return NextResponse.json({ error: 'La IA no devolvió ejercicios válidos' }, { status: 502 })
+    }
 
     // Inserción directa en la base de datos
     const { error } = await supabase.from('ejercicios').insert(ejerciciosParaGuardar)

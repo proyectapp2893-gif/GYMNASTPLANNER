@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useClubStore } from '../../../store/useClubStore'
 import { CheckCircle2, Loader2, UploadCloud } from 'lucide-react'
+import { normalizeExerciseInput } from '../../lib/exercise-normalization'
 
 // 🔥 PEGA AQUÍ TODO EL JSON QUE TE PASÉ (Los 70+ ejercicios)
 const CARTAS_JSON = [
@@ -18,25 +20,20 @@ const CARTAS_JSON = [
 ]
 
 export default function ImportadorCartas() {
+  const { clubId } = useClubStore()
   const [cargando, setCargando] = useState(false)
   const [progreso, setProgreso] = useState(0)
   const [terminado, setTerminado] = useState(false)
 
   const iniciarImportacion = async () => {
+    if (!clubId) return
     setCargando(true)
     
     // Subimos los ejercicios uno por uno para ver el progreso
     for (let i = 0; i < CARTAS_JSON.length; i++) {
       const ejercicio = CARTAS_JSON[i]
       
-      const { error } = await supabase.from('ejercicios').insert([{
-        nombre: ejercicio.nombre,
-        categoria: ejercicio.categoria,
-        dificultad: ejercicio.dificultad,
-        aparato: ejercicio.aparato,
-        rangos_repeticiones: ejercicio.rangos_repeticiones,
-        descripcion_corta: ejercicio.descripcion_corta
-      }])
+      const { error } = await supabase.from('ejercicios').insert([normalizeExerciseInput(ejercicio, clubId)])
 
       if (error) {
         console.error("Error al subir:", ejercicio.nombre, error)

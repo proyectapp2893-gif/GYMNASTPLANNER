@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useClubStore } from '../../../store/useClubStore';
 import { supabase } from '../../lib/supabase';

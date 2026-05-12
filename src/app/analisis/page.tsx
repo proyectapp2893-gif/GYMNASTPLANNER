@@ -1,24 +1,70 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { LineChart, Line, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { BrainCircuit, TrendingUp, Target, Download, Activity, AlertTriangle, CheckCircle2, Filter, Users, Dumbbell } from 'lucide-react'
 import { useClubStore } from '../../../store/useClubStore'
 import { supabase } from '../../lib/supabase'
+import type { Competencia, Puntuacion } from '../../lib/types'
+
+const APARATOS = ['Salto', 'Barras', 'Viga', 'Suelo'] as const
+type Aparato = typeof APARATOS[number]
+
+interface AtletaAnalisis {
+  id: string
+  nombre: string
+  grupo_id?: string | null
+  nivel?: string
+}
+
+interface RadarAparato {
+  aparato: Aparato
+  nota: number
+  fullMark: number
+}
+
+interface HistorialCompetencia {
+  fechaOriginal: string
+  nombre: string
+  etiquetaX: string
+  totalAA: number
+  Salto: number
+  Barras: number
+  Viga: number
+  Suelo: number
+}
+
+interface AgrupadoCompetencia {
+  fechaOriginal: string
+  nombre: string
+  etiquetaX: string
+  notas: Record<Aparato, number[]>
+  aaPorAtleta: Record<string, number>
+}
+
+interface DiagnosticoIA {
+  sujeto: string
+  aparatoDebil: Aparato
+  notaDebil: number
+  aparatoFuerte: Aparato
+  tendencia: string
+  recomendacionMacro: string
+  recomendacionFisica: string
+}
 
 export default function AnalisisPremium() {
   const { clubId, nombreClub, logoUrl } = useClubStore() 
   const [cargando, setCargando] = useState(true)
   
-  const [atletas, setAtletas] = useState<any[]>([])
-  const [atletaActiva, setAtletaActiva] = useState<any>(null)
+  const [atletas, setAtletas] = useState<AtletaAnalisis[]>([])
+  const [atletaActiva, setAtletaActiva] = useState<AtletaAnalisis | null>(null)
   
   const [nivelFiltro, setNivelFiltro] = useState('Todos')
   const [nivelesDisponibles, setNivelesDisponibles] = useState<string[]>([])
 
-  const [historial, setHistorial] = useState<any[]>([])
-  const [promediosAparatos, setPromediosAparatos] = useState<any[]>([])
-  const [diagnosticoIA, setDiagnosticoIA] = useState<any>(null)
+  const [historial, setHistorial] = useState<HistorialCompetencia[]>([])
+  const [promediosAparatos, setPromediosAparatos] = useState<RadarAparato[]>([])
+  const [diagnosticoIA, setDiagnosticoIA] = useState<DiagnosticoIA | null>(null)
 
   // 1. CARGAR ATLETAS Y NIVELES
   useEffect(() => {
@@ -26,24 +72,24 @@ export default function AnalisisPremium() {
       if (!clubId) return
       setCargando(true)
       try {
-        const { data: datosAtletas, error: errAtletas } = await supabase.from('atletas').select('id, nombre, grupo_id').order('nombre')
+        const { data: datosAtletas, error: errAtletas } = await supabase.from('atletas').select('id, nombre, grupo_id').eq('club_id', clubId).order('nombre')
         if (errAtletas) throw errAtletas
 
-        const { data: datosGrupos, error: errGrupos } = await supabase.from('grupos').select('id, nivel')
+        const { data: datosGrupos, error: errGrupos } = await supabase.from('grupos').select('id, nivel').eq('club_id', clubId)
         if (errGrupos) throw errGrupos
 
         if (datosAtletas && datosGrupos) {
           const mapGrupos: Record<string, string> = {}
-          datosGrupos.forEach(g => { mapGrupos[g.id] = g.nivel })
+          datosGrupos.forEach(g => { mapGrupos[g.id] = g.nivel || 'General' })
 
           const nivelesSet = new Set<string>()
           const atletasConNivel = datosAtletas.map(a => {
-            const nivelReal = mapGrupos[a.grupo_id] || 'General'
+            const nivelReal = a.grupo_id ? mapGrupos[a.grupo_id] || 'General' : 'General'
             nivelesSet.add(nivelReal)
             return { ...a, nivel: nivelReal }
           })
 
-          setAtletas(atletasConNivel)
+          setAtletas(atletasConNivel as AtletaAnalisis[])
           setNivelesDisponibles(Array.from(nivelesSet))
           
           // Por defecto arranca mostrando el promedio de todos
@@ -62,115 +108,7 @@ export default function AnalisisPremium() {
     return nivelFiltro === 'Todos' ? atletas : atletas.filter(a => a.nivel === nivelFiltro)
   }, [atletas, nivelFiltro])
 
-  // 2. CARGAR HISTORIAL (INDIVIDUAL O GRUPAL)
-  useEffect(() => {
-    if (!atletaActiva || atletasFiltrados.length === 0) return
-    
-    const cargarHistorial = async () => {
-      setCargando(true)
-      try {
-        const { data: competencias, error: errComp } = await supabase.from('competencias').select('id, nombre, fecha').eq('club_id', clubId).order('fecha', { ascending: true })
-        if (errComp) throw errComp
-
-        const mapCompetencias: Record<string, any> = {}
-        competencias?.forEach(c => { mapCompetencias[c.id] = c })
-
-        // 🔥 LÓGICA INTELIGENTE: Si es equipo, traemos notas de todas las niñas del filtro. Si es individual, solo de ella.
-        let query = supabase.from('puntuaciones').select('competencia_id, aparato, nota_final, atleta_id')
-        
-        if (atletaActiva.id === 'equipo') {
-          const ids = atletasFiltrados.map(a => a.id)
-          if (ids.length === 0) { setHistorial([]); setCargando(false); return }
-          query = query.in('atleta_id', ids)
-        } else {
-          query = query.eq('atleta_id', atletaActiva.id)
-        }
-
-        const { data: puntuaciones, error: errPunt } = await query
-        if (errPunt) throw errPunt
-
-        if (!puntuaciones || puntuaciones.length === 0) {
-          setHistorial([]); setPromediosAparatos([]); setDiagnosticoIA(null); setCargando(false); return
-        }
-
-        const agrupado: Record<string, any> = {}
-        
-        puntuaciones.forEach(p => {
-          const compId = p.competencia_id
-          if (!mapCompetencias[compId]) return 
-
-          if (!agrupado[compId]) {
-            const fechaObj = new Date(mapCompetencias[compId].fecha)
-            agrupado[compId] = {
-              fechaOriginal: mapCompetencias[compId].fecha,
-              nombre: mapCompetencias[compId].nombre,
-              etiquetaX: `${fechaObj.getDate()}/${fechaObj.getMonth() + 1} - ${mapCompetencias[compId].nombre}`,
-              notas: { Salto: [], Barras: [], Viga: [], Suelo: [] }, // Guardamos en arreglos para poder promediar
-              aaPorAtleta: {} // Para calcular el All-Around perfecto
-            }
-          }
-          
-          const nota = Number(p.nota_final) || 0
-          const ap = p.aparato
-
-          if (ap && agrupado[compId].notas[ap]) {
-            agrupado[compId].notas[ap].push(nota)
-          }
-
-          const atlId = p.atleta_id || 'indiv'
-          if (!agrupado[compId].aaPorAtleta[atlId]) agrupado[compId].aaPorAtleta[atlId] = 0
-          agrupado[compId].aaPorAtleta[atlId] += nota
-        })
-
-        // Procesamos los promedios finales por competencia
-        const historialArray = Object.values(agrupado).map(comp => {
-          const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0
-          const aaVals = Object.values(comp.aaPorAtleta) as number[]
-          const avgAA = aaVals.length ? aaVals.reduce((a,b) => a+b, 0) / aaVals.length : 0
-
-          return {
-            ...comp,
-            totalAA: avgAA,
-            Salto: avg(comp.notas.Salto),
-            Barras: avg(comp.notas.Barras),
-            Viga: avg(comp.notas.Viga),
-            Suelo: avg(comp.notas.Suelo)
-          }
-        }).sort((a: any, b: any) => new Date(a.fechaOriginal).getTime() - new Date(b.fechaOriginal).getTime())
-        
-        if (historialArray.length === 0) {
-          setHistorial([]); setDiagnosticoIA(null); setCargando(false); return
-        }
-
-        // Promedios globales para el Radar (El promedio de los promedios de las competencias)
-        let sumSalto = 0, sumBarras = 0, sumViga = 0, sumSuelo = 0
-        historialArray.forEach((h: any) => {
-          sumSalto += h.Salto; sumBarras += h.Barras; sumViga += h.Viga; sumSuelo += h.Suelo;
-        })
-        const numComps = historialArray.length || 1 
-        
-        const radarData = [
-          { aparato: 'Salto', nota: Number((sumSalto / numComps).toFixed(2)), fullMark: 10 },
-          { aparato: 'Barras', nota: Number((sumBarras / numComps).toFixed(2)), fullMark: 10 },
-          { aparato: 'Viga', nota: Number((sumViga / numComps).toFixed(2)), fullMark: 10 },
-          { aparato: 'Suelo', nota: Number((sumSuelo / numComps).toFixed(2)), fullMark: 10 }
-        ]
-
-        setHistorial(historialArray)
-        setPromediosAparatos(radarData)
-        generarDiagnosticoIA(radarData, historialArray)
-
-      } catch (error) {
-        console.error("❌ Error en el historial:", error)
-      } finally {
-        setCargando(false)
-      }
-    }
-
-    cargarHistorial()
-  }, [atletaActiva, clubId, atletasFiltrados])
-
-  const generarDiagnosticoIA = (radarData: any[], historialArray: any[]) => {
+  const generarDiagnosticoIA = useCallback((radarData: RadarAparato[], historialArray: HistorialCompetencia[]) => {
     const aparatoMasDebil = radarData.reduce((prev, curr) => (prev.nota < curr.nota ? prev : curr))
     const aparatoFuerte = radarData.reduce((prev, curr) => (prev.nota > curr.nota ? prev : curr))
     
@@ -195,7 +133,120 @@ export default function AnalisisPremium() {
         ? 'Protocolo de potencia pliométrica y reactividad neuromuscular enfocado en tren inferior.' 
         : 'Énfasis en estabilización lumbopélvica (Core) y propiocepción articular.'
     })
-  }
+  }, [atletaActiva, nivelFiltro])
+
+  // 2. CARGAR HISTORIAL (INDIVIDUAL O GRUPAL)
+  useEffect(() => {
+    if (!atletaActiva || atletasFiltrados.length === 0) return
+    
+    const cargarHistorial = async () => {
+      setCargando(true)
+      try {
+        const { data: competencias, error: errComp } = await supabase.from('competencias').select('id, nombre, fecha').eq('club_id', clubId).order('fecha', { ascending: true })
+        if (errComp) throw errComp
+
+        const competenciasClub = (competencias || []) as Competencia[]
+        const mapCompetencias: Record<string, Competencia> = {}
+        competenciasClub.forEach(c => { mapCompetencias[c.id] = c })
+
+        // 🔥 LÓGICA INTELIGENTE: Si es equipo, traemos notas de todas las niñas del filtro. Si es individual, solo de ella.
+        let query = supabase.from('puntuaciones').select('competencia_id, aparato, nota_final, atleta_id')
+        const idsCompetencias = competenciasClub.map(c => c.id)
+        if (idsCompetencias.length === 0) { setHistorial([]); setPromediosAparatos([]); setDiagnosticoIA(null); setCargando(false); return }
+        query = query.in('competencia_id', idsCompetencias)
+        
+        if (atletaActiva.id === 'equipo') {
+          const ids = atletasFiltrados.map(a => a.id)
+          if (ids.length === 0) { setHistorial([]); setCargando(false); return }
+          query = query.in('atleta_id', ids)
+        } else {
+          query = query.eq('atleta_id', atletaActiva.id)
+        }
+
+        const { data: puntuaciones, error: errPunt } = await query
+        if (errPunt) throw errPunt
+
+        if (!puntuaciones || puntuaciones.length === 0) {
+          setHistorial([]); setPromediosAparatos([]); setDiagnosticoIA(null); setCargando(false); return
+        }
+
+        const puntuacionesClub = puntuaciones as Puntuacion[]
+        const agrupado: Record<string, AgrupadoCompetencia> = {}
+        
+        puntuacionesClub.forEach(p => {
+          const compId = p.competencia_id
+          if (!mapCompetencias[compId]) return 
+
+          if (!agrupado[compId]) {
+            const fechaObj = new Date(mapCompetencias[compId].fecha)
+            agrupado[compId] = {
+              fechaOriginal: mapCompetencias[compId].fecha,
+              nombre: mapCompetencias[compId].nombre,
+              etiquetaX: `${fechaObj.getDate()}/${fechaObj.getMonth() + 1} - ${mapCompetencias[compId].nombre}`,
+              notas: { Salto: [], Barras: [], Viga: [], Suelo: [] }, // Guardamos en arreglos para poder promediar
+              aaPorAtleta: {} // Para calcular el All-Around perfecto
+            }
+          }
+          
+          const nota = Number(p.nota_final) || 0
+          const ap = p.aparato
+
+          if (APARATOS.includes(ap as Aparato)) {
+            agrupado[compId].notas[ap as Aparato].push(nota)
+          }
+
+          const atlId = p.atleta_id || 'indiv'
+          if (!agrupado[compId].aaPorAtleta[atlId]) agrupado[compId].aaPorAtleta[atlId] = 0
+          agrupado[compId].aaPorAtleta[atlId] += nota
+        })
+
+        // Procesamos los promedios finales por competencia
+        const historialArray = Object.values(agrupado).map((comp): HistorialCompetencia => {
+          const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0
+          const aaVals = Object.values(comp.aaPorAtleta)
+          const avgAA = aaVals.length ? aaVals.reduce((a,b) => a+b, 0) / aaVals.length : 0
+
+          return {
+            ...comp,
+            totalAA: avgAA,
+            Salto: avg(comp.notas.Salto),
+            Barras: avg(comp.notas.Barras),
+            Viga: avg(comp.notas.Viga),
+            Suelo: avg(comp.notas.Suelo)
+          }
+        }).sort((a, b) => new Date(a.fechaOriginal).getTime() - new Date(b.fechaOriginal).getTime())
+        
+        if (historialArray.length === 0) {
+          setHistorial([]); setDiagnosticoIA(null); setCargando(false); return
+        }
+
+        // Promedios globales para el Radar (El promedio de los promedios de las competencias)
+        let sumSalto = 0, sumBarras = 0, sumViga = 0, sumSuelo = 0
+        historialArray.forEach((h) => {
+          sumSalto += h.Salto; sumBarras += h.Barras; sumViga += h.Viga; sumSuelo += h.Suelo;
+        })
+        const numComps = historialArray.length || 1 
+        
+        const radarData: RadarAparato[] = [
+          { aparato: 'Salto', nota: Number((sumSalto / numComps).toFixed(2)), fullMark: 10 },
+          { aparato: 'Barras', nota: Number((sumBarras / numComps).toFixed(2)), fullMark: 10 },
+          { aparato: 'Viga', nota: Number((sumViga / numComps).toFixed(2)), fullMark: 10 },
+          { aparato: 'Suelo', nota: Number((sumSuelo / numComps).toFixed(2)), fullMark: 10 }
+        ]
+
+        setHistorial(historialArray)
+        setPromediosAparatos(radarData)
+        generarDiagnosticoIA(radarData, historialArray)
+
+      } catch (error) {
+        console.error("❌ Error en el historial:", error)
+      } finally {
+        setCargando(false)
+      }
+    }
+
+    cargarHistorial()
+  }, [atletaActiva, clubId, atletasFiltrados, generarDiagnosticoIA])
 
   const exportarPDF = () => { window.print() }
 
@@ -281,7 +332,7 @@ export default function AnalisisPremium() {
             <select 
               className="bg-transparent text-white text-sm md:text-base outline-none font-bold w-full cursor-pointer appearance-none truncate" 
               value={atletaActiva?.id || ''} 
-              onChange={(e) => setAtletaActiva(opcionesMostradas.find(a => a.id === e.target.value))} 
+              onChange={(e) => setAtletaActiva(opcionesMostradas.find(a => a.id === e.target.value) || null)} 
               disabled={cargando || opcionesMostradas.length === 0}
             >
               {opcionesMostradas.length === 0 && <option disabled>Sin atletas...</option>}

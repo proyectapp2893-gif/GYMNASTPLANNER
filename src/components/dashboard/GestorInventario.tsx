@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Box, CheckSquare, Square, Loader2, Dumbbell, MoveDiagonal, Activity, Layers, Plus, X, Search, CloudLightning, Edit2, Check, Trash2 } from 'lucide-react'
 
+type ClubInventoryUpdate = {
+  inventario: string[]
+  catalogo_extra?: string[]
+}
+
 const CATEGORIAS_BASE = [
   { categoria: 'Suelo y Acrobacia', icono: MoveDiagonal, items: ['Pedana con Resortes', 'Pista de Tumbling', 'AirTrack', 'Colchonetón de Caída'] },
   { categoria: 'Aparatos de Viga', icono: Activity, items: ['Viga Alta Oficial', 'Viga Baja', 'Viga a ras de piso', 'Líneas trazadas en suelo'] },
@@ -43,7 +48,7 @@ export default function GestorInventario({ grupoId: clubId }: { grupoId: string 
     setEstadoGuardado('guardando')
     
     try {
-      const updates: any = { inventario: nuevoInventario }
+      const updates: ClubInventoryUpdate = { inventario: nuevoInventario }
       if (nuevoCatalogo) updates.catalogo_extra = nuevoCatalogo
       await supabase.from('clubs').update(updates).eq('id', clubId)
     } catch (error) {

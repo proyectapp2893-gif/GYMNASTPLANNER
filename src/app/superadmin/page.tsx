@@ -1,15 +1,31 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BotonGenerarIA from '../../components/ejercicios/BotonGenerarIA';
+import type { Club, Ejercicio } from '../../lib/types';
+
+type ClubAdmin = Club & {
+  estado?: string | null
+  created_at?: string | null
+}
+
+type EjercicioGlobal = Ejercicio & {
+  etiquetas?: string | null
+}
+
+type EjercicioCSV = Omit<EjercicioGlobal, 'id'> & {
+  club_id: null
+}
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido'
 
 export default function SuperAdminPage() {
   const router = useRouter();
-  const [clubes, setClubes] = useState<any[]>([]);
+  const [clubes, setClubes] = useState<ClubAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
   
   const [autorizado, setAutorizado] = useState(false); 
@@ -17,7 +33,7 @@ export default function SuperAdminPage() {
   
   const [pestañaActiva, setPestañaActiva] = useState<'clubes' | 'biblioteca'>('clubes');
 
-  const [ejerciciosGlobales, setEjerciciosGlobales] = useState<any[]>([]);
+  const [ejerciciosGlobales, setEjerciciosGlobales] = useState<EjercicioGlobal[]>([]);
   const [nuevoEjNombre, setNuevoEjNombre] = useState('');
   const [nuevoEjCategoria, setNuevoEjCategoria] = useState('Técnico');
   const [nuevoEjDesc, setNuevoEjDesc] = useState('');
@@ -28,7 +44,7 @@ export default function SuperAdminPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cargandoCSV, setCargandoCSV] = useState(false);
   
-  const [previewCSV, setPreviewCSV] = useState<any[]>([]);
+  const [previewCSV, setPreviewCSV] = useState<EjercicioCSV[]>([]);
   const [guardandoMasivo, setGuardandoMasivo] = useState(false);
 
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
@@ -43,7 +59,7 @@ export default function SuperAdminPage() {
 
   const [toast, setToast] = useState<{ mensaje: string, tipo: 'exito' | 'error' } | null>(null);
 
-  const [ejercicioEditando, setEjercicioEditando] = useState<any>(null);
+  const [ejercicioEditando, setEjercicioEditando] = useState<EjercicioGlobal | null>(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com'; 
@@ -53,12 +69,17 @@ export default function SuperAdminPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  useEffect(() => {
-    verificarSeguridad();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cargarDatos = useCallback(async () => {
+    const { data: clubesData } = await supabase.from('clubs').select('*').order('estado', { ascending: false }); 
+    if (clubesData) setClubes(clubesData as ClubAdmin[]);
+
+    const { data: ejData } = await supabase.from('ejercicios').select('*').is('club_id', null).order('created_at', { ascending: false });
+    if (ejData) setEjerciciosGlobales(ejData as EjercicioGlobal[]);
+
+    setCargando(false);
   }, []);
 
-  const verificarSeguridad = async () => {
+  const verificarSeguridad = useCallback(async () => {
     setCargando(true);
     const { data: { user }, error } = await supabase.auth.getUser();
     
@@ -75,23 +96,17 @@ export default function SuperAdminPage() {
     }
 
     setAutorizado(true);
-    cargarDatos();
-  };
+    void cargarDatos();
+  }, [cargarDatos]);
 
-  const cargarDatos = async () => {
-    const { data: clubesData } = await supabase.from('clubs').select('*').order('estado', { ascending: false }); 
-    if (clubesData) setClubes(clubesData);
-
-    const { data: ejData } = await supabase.from('ejercicios').select('*').is('club_id', null).order('created_at', { ascending: false });
-    if (ejData) setEjerciciosGlobales(ejData);
-
-    setCargando(false);
-  };
+  useEffect(() => {
+    void verificarSeguridad();
+  }, [verificarSeguridad]);
 
   const cambiarEstadoClub = async (id: string, nuevoEstado: string) => {
     const { error } = await supabase.from('clubs').update({ estado: nuevoEstado }).eq('id', id);
     if (!error) {
-      cargarDatos();
+      void cargarDatos();
       mostrarAviso(`Club marcado como ${nuevoEstado}.`, 'exito');
     }
   };
@@ -99,7 +114,7 @@ export default function SuperAdminPage() {
   const cambiarAccesoBiblioteca = async (id: string, accesoActual: boolean) => {
     const { error } = await supabase.from('clubs').update({ acceso_biblioteca_elite: !accesoActual }).eq('id', id);
     if (!error) {
-      cargarDatos();
+      void cargarDatos();
       mostrarAviso(`Acceso Premium ${!accesoActual ? 'activado' : 'desactivado'}.`, 'exito');
     }
   };
@@ -121,7 +136,7 @@ export default function SuperAdminPage() {
       setNuevoEjDesc('');
       setNuevoEjVideo('');
       setNuevoEjEtiquetas('');
-      cargarDatos();
+      void cargarDatos();
       mostrarAviso('¡Ejercicio Maestro añadido a la colección!');
     } else {
       mostrarAviso('Error al guardar el ejercicio.', 'error');
@@ -131,6 +146,7 @@ export default function SuperAdminPage() {
 
   const guardarEdicionGlobal = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ejercicioEditando) return;
     setGuardandoEdicion(true);
     
     const { error } = await supabase.from('ejercicios').update({
@@ -147,19 +163,12 @@ export default function SuperAdminPage() {
 
     if (!error) {
       setEjercicioEditando(null);
-      cargarDatos();
+      void cargarDatos();
       mostrarAviso('¡Ejercicio actualizado correctamente!', 'exito');
     } else {
       mostrarAviso('Error al actualizar el ejercicio.', 'error');
     }
     setGuardandoEdicion(false);
-  };
-
-  const eliminarEjercicioGlobal = async (id: string) => {
-    if(!confirm('¿Estás seguro? Este ejercicio desaparecerá de las bibliotecas de todos los clubes Premium.')) return;
-    await supabase.from('ejercicios').delete().eq('id', id);
-    cargarDatos();
-    mostrarAviso('Ejercicio eliminado correctamente.', 'exito');
   };
 
   const cerrarSesion = async () => {
@@ -213,7 +222,7 @@ export default function SuperAdminPage() {
           return;
         }
 
-        const ejerciciosParseados = [];
+        const ejerciciosParseados: EjercicioCSV[] = [];
 
         const parsearLinea = (linea: string, sep: string) => {
           const resultado = [];
@@ -267,9 +276,9 @@ export default function SuperAdminPage() {
           setPreviewCSV(ejerciciosParseados);
         }
 
-      } catch (err: any) {
+      } catch (err) {
          console.error("Error CSV:", err);
-         mostrarAviso("Error procesando el archivo: " + err.message, 'error');
+         mostrarAviso("Error procesando el archivo: " + getErrorMessage(err), 'error');
       } finally {
         setCargandoCSV(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -288,28 +297,28 @@ export default function SuperAdminPage() {
       const { error } = await supabase.from('ejercicios').upsert(previewCSV, { onConflict: 'nombre' });
       if (error) throw error;
       
-      cargarDatos();
+      void cargarDatos();
       setPreviewCSV([]); 
       mostrarAviso(`¡Éxito! ${previewCSV.length} ejercicios procesados (Nuevos agregados, existentes actualizados).`, 'exito');
-    } catch (err: any) {
-      mostrarAviso(`Hubo un error al guardar: ${err.message}`, 'error');
+    } catch (err) {
+      mostrarAviso(`Hubo un error al guardar: ${getErrorMessage(err)}`, 'error');
     } finally {
       setGuardandoMasivo(false);
     }
   };
 
-  const aparatosUnicos = Array.from(new Set(ejerciciosGlobales.map(ej => ej.aparato).filter(Boolean)));
-  const dificultadesUnicas = Array.from(new Set(ejerciciosGlobales.map(ej => ej.dificultad).filter(Boolean)));
-  const categoriasUnicas = Array.from(new Set(ejerciciosGlobales.map(ej => ej.categoria).filter(Boolean)));
+  const aparatosUnicos = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.aparato).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
+  const dificultadesUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.dificultad).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
+  const categoriasUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.categoria).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
 
-  const ejerciciosFiltrados = ejerciciosGlobales.filter(ej => {
+  const ejerciciosFiltrados = useMemo(() => ejerciciosGlobales.filter(ej => {
     const cumpleCategoria = filtroCategoria === 'Todos' || ej.categoria === filtroCategoria;
     const cumpleAparato = filtroAparato === 'Todos' || ej.aparato === filtroAparato;
     const cumpleDificultad = filtroDificultad === 'Todos' || ej.dificultad === filtroDificultad;
     
     let cumpleFecha = true;
     if (filtroFechaExacta) {
-      const dateObj = new Date(ej.created_at);
+      const dateObj = new Date(ej.created_at || '');
       const yyyy = dateObj.getFullYear();
       const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
       const dd = String(dateObj.getDate()).padStart(2, '0');
@@ -326,7 +335,7 @@ export default function SuperAdminPage() {
     }
 
     return cumpleCategoria && cumpleAparato && cumpleDificultad && cumpleFecha && cumpleBusqueda;
-  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); 
+  }).sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()), [ejerciciosGlobales, filtroAparato, filtroCategoria, filtroDificultad, filtroFechaExacta, terminoBusqueda]); 
 
   const toggleSeleccion = (id: string) => {
     setSeleccionados(prev => prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]);
@@ -355,7 +364,7 @@ export default function SuperAdminPage() {
       mostrarAviso("Hubo un error al eliminar los ejercicios.", 'error');
     } else {
       setSeleccionados([]); 
-      cargarDatos(); 
+      void cargarDatos(); 
       mostrarAviso(`${seleccionados.length} ejercicios eliminados correctamente.`, 'exito');
     }
     
@@ -586,12 +595,12 @@ export default function SuperAdminPage() {
                  {clubes.map((club) => (
                    <tr key={club.id} className="hover:bg-slate-800/50 transition-colors">
                      <td className="p-4 flex items-center gap-3"><Building2 className="text-slate-500 w-5 h-5" /><span className="font-bold text-white">{club.nombre}</span></td>
-                     <td className="p-4 text-sm text-slate-400">{new Date(club.created_at).toLocaleDateString()}</td>
+                     <td className="p-4 text-sm text-slate-400">{club.created_at ? new Date(club.created_at).toLocaleDateString() : '-'}</td>
                      <td className="p-4 text-center"><span className={`inline-block px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${club.estado === 'pendiente' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>{club.estado}</span></td>
                      <td className="p-4 text-center bg-indigo-900/10">
                        {club.estado === 'aprobado' ? (
                          <div className="flex flex-col items-center justify-center gap-1">
-                           <button onClick={() => cambiarAccesoBiblioteca(club.id, club.acceso_biblioteca_elite)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${club.acceso_biblioteca_elite ? 'bg-indigo-500' : 'bg-slate-600'}`}>
+                           <button onClick={() => cambiarAccesoBiblioteca(club.id, Boolean(club.acceso_biblioteca_elite))} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${club.acceso_biblioteca_elite ? 'bg-indigo-500' : 'bg-slate-600'}`}>
                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${club.acceso_biblioteca_elite ? 'translate-x-6' : 'translate-x-1'}`} />
                            </button>
                            <span className={`text-[10px] font-bold uppercase tracking-wider ${club.acceso_biblioteca_elite ? 'text-indigo-400' : 'text-slate-500'}`}>{club.acceso_biblioteca_elite ? 'Activado' : 'Apagado'}</span>
@@ -849,7 +858,7 @@ export default function SuperAdminPage() {
                           ) : <div/>}
                           
                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                             {new Date(ej.created_at).toLocaleDateString()}
+                             {ej.created_at ? new Date(ej.created_at).toLocaleDateString() : '-'}
                           </span>
                         </div>
                       </div>

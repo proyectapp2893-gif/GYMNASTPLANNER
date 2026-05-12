@@ -1,16 +1,18 @@
 "use client" 
 
-import { useState, useEffect } from 'react' 
+import { useState, useEffect, useCallback, useMemo } from 'react' 
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
 import { Plus, Search, Filter, Dumbbell, Loader2, X, Save } from 'lucide-react' 
 import BotonGenerarIA from '../../components/ejercicios/BotonGenerarIA'
 import TarjetaEjercicio from '../../components/ejercicios/TarjetaEjercicio'
+import { buildExerciseFingerprint, normalizeExerciseInput } from '../../lib/exercise-normalization'
+import type { Ejercicio } from '../../lib/types'
 
 export default function Ejercicios() {
   const { clubId } = useClubStore() 
   
-  const [ejercicios, setEjercicios] = useState<any[]>([])
+  const [ejercicios, setEjercicios] = useState<Ejercicio[]>([])
   const [cargando, setCargando] = useState(true)
 
   const [busqueda, setBusqueda] = useState('')
@@ -22,8 +24,12 @@ export default function Ejercicios() {
     nombre: '', categoria: 'Técnico', dificultad: 'Básico', aparato: 'Suelo', descripcion_corta: '', rangos_repeticiones: '10-20 reps'
   })
 
-  const cargarEjercicios = async () => {
-    if (!clubId) return;
+  const cargarEjercicios = useCallback(async () => {
+    if (!clubId) {
+      setEjercicios([])
+      setCargando(false)
+      return
+    }
     setCargando(true)
 
     const { data: clubData } = await supabase
@@ -45,30 +51,42 @@ export default function Ejercicios() {
     const { data, error } = await query
 
     if (error) console.error('Error cargando ejercicios:', error)
-    setEjercicios(data || [])
+    setEjercicios((data || []) as Ejercicio[])
     setCargando(false)
-  }
+  }, [clubId])
 
   useEffect(() => {
-    cargarEjercicios()
-  }, [clubId]) 
+    const timeoutId = window.setTimeout(() => {
+      void cargarEjercicios()
+    }, 0)
 
-  const ejerciciosFiltrados = ejercicios.filter(ej => {
+    return () => window.clearTimeout(timeoutId)
+  }, [cargarEjercicios]) 
+
+  const ejerciciosFiltrados = useMemo(() => ejercicios.filter(ej => {
     const termino = busqueda.toLowerCase()
     return (
       ej.nombre?.toLowerCase().includes(termino) || 
       ej.categoria?.toLowerCase().includes(termino) ||
       ej.aparato?.toLowerCase().includes(termino)
     )
-  })
+  }), [busqueda, ejercicios])
 
   const guardarNuevoEjercicio = async () => {
     if (!nuevoEj.nombre) return alert("El nombre es obligatorio")
     setGuardando(true)
     
-    const ejercicioAGuardar = {
-      ...nuevoEj,
-      club_id: clubId 
+    const ejercicioAGuardar = normalizeExerciseInput(nuevoEj, clubId)
+    const fingerprintNuevo = buildExerciseFingerprint(ejercicioAGuardar)
+    const { data: existentes } = await supabase
+      .from('ejercicios')
+      .select('id, nombre, aparato')
+      .eq('club_id', clubId)
+
+    const duplicado = (existentes || []).some(ej => buildExerciseFingerprint(ej as Ejercicio) === fingerprintNuevo)
+    if (duplicado) {
+      setGuardando(false)
+      return alert("Ya existe un ejercicio con ese nombre y aparato en tu biblioteca")
     }
 
     const { error } = await supabase.from('ejercicios').insert([ejercicioAGuardar])

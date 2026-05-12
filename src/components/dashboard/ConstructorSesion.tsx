@@ -5,6 +5,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { GripVertical, Flame, Dumbbell, Activity, ShieldCheck, Wind, Loader2, Archive, Save, Info, X, CalendarDays, Clock, Search, ChevronUp, ChevronDown, Users, CheckCircle2, XCircle, Edit3, Printer, BrainCircuit, Sparkles, AlertTriangle, PlayCircle, Globe, Maximize, Zap, AlignJustify, Ruler, Award } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
+import { getCompetitionProximityForDate, getSessionTimeDistribution } from '../../lib/sports-planning'
 
 const parsearFecha = (fechaStr: string) => {
   if (!fechaStr) return null;
@@ -19,7 +20,7 @@ const parsearFecha = (fechaStr: string) => {
   return null;
 };
 
-const normalizarTexto = (texto: string) => {
+const normalizarTexto = (texto?: string | null) => {
   if (!texto) return '';
   return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 };
@@ -31,7 +32,71 @@ const subclavesEstaticas = [
   'rutinas_mitades', 'rutinas_completas',
   'flexibilidad_activa', 'flexibilidad_pasiva',
   'cierre_elongacion', 'cierre_retroalimentacion'
-];
+] as const;
+
+type GrupoDosis = 'avanzado' | 'base' | 'desarrollo'
+
+type DosificacionPorGrupo = Partial<Record<GrupoDosis, string>> & Record<string, string | undefined>
+
+interface EjercicioSesion {
+  id: string
+  contenido: string
+  categoria?: string | null
+  descripcion?: string | null
+  descripcion_corta?: string | null
+  video_url?: string | null
+  aparato?: string | null
+  dosificacion?: string | DosificacionPorGrupo | null
+}
+
+type ColumnasSesion = Record<string, EjercicioSesion[]>
+
+interface ConstructorSesionProps {
+  grupoId?: string
+  nivelSeleccionado?: string
+  objetivoFase?: string
+  semanaActual?: string
+  diaActivo?: string
+  enfoqueDia?: string
+  fechaExactaDia?: string
+  horaDia?: string
+}
+
+interface CompetenciaPlanificada {
+  nombre?: string
+  fecha: string
+}
+
+interface DiagnosticoContexto {
+  competencia: string
+  aparatoDebil: string
+  promedio: string
+  mensaje: string
+}
+
+type IaEjercicioItem = string | { id?: string; dosificacion?: string | DosificacionPorGrupo | null }
+
+interface IaSesionResponse {
+  error?: string
+  calentamiento?: IaEjercicioItem[]
+  'prep-fisica'?: IaEjercicioItem[]
+  tecnico?: IaEjercicioItem[]
+  rutinas?: IaEjercicioItem[]
+  flexibilidad?: IaEjercicioItem[]
+  cierre?: IaEjercicioItem[]
+}
+
+const crearColumnasVacias = (banco: EjercicioSesion[] = []): ColumnasSesion => {
+  const col: ColumnasSesion = { banco }
+  subclavesEstaticas.forEach(k => col[k] = [])
+  return col
+}
+
+const clonarColumnas = (columnas: ColumnasSesion): ColumnasSesion => {
+  return Object.fromEntries(
+    Object.entries(columnas).map(([key, ejercicios]) => [key, [...ejercicios]])
+  ) as ColumnasSesion
+}
 
 const aparatosMenu = [
   { nombre: 'Todos los Aparatos', Icono: Globe },
@@ -52,7 +117,7 @@ export default function ConstructorSesion({
   enfoqueDia = 'Entrenamiento General',
   fechaExactaDia = '',
   horaDia = ''
-}: any) {
+}: ConstructorSesionProps) {
   
   const { clubId, nombreClub: nombreClubGlobal, logoUrl } = useClubStore()
 
@@ -60,12 +125,12 @@ export default function ConstructorSesion({
   const [isGenerating, setIsGenerating] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [haySesionParaGuardar, setHaySesionParaGuardar] = useState(false)
-  const [ejercicioSeleccionado, setEjercicioSeleccionado] = useState<any>(null)
+  const [ejercicioSeleccionado, setEjercicioSeleccionado] = useState<EjercicioSesion | null>(null)
   
   const [sesionId, setSesionId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [bancoAbierto, setBancoAbierto] = useState(true)
-  const [todosLosEjercicios, setTodosLosEjercicios] = useState<any[]>([])
+  const [todosLosEjercicios, setTodosLosEjercicios] = useState<EjercicioSesion[]>([])
   const [filtroActivo, setFiltroActivo] = useState('Todos')
   
   const [filtroAparato, setFiltroAparato] = useState('Todos los Aparatos')
@@ -77,14 +142,15 @@ export default function ConstructorSesion({
   const [grupoTabActivo, setGrupoTabActivo] = useState<'avanzado' | 'base' | 'desarrollo'>('avanzado')
   const [nombreClub, setNombreClub] = useState(nombreClubGlobal || 'Club de Gimnasia')
 
-  const [diagnosticoContexto, setDiagnosticoContexto] = useState<any>(null)
+  const [diagnosticoContexto, setDiagnosticoContexto] = useState<DiagnosticoContexto | null>(null)
   const [cargandoContexto, setCargandoContexto] = useState(false)
 
-  const [columnas, setColumnas] = useState<any>(() => {
-    const col: any = { 'banco': [] }
-    subclavesEstaticas.forEach(k => col[k] = [])
-    return col
-  })
+  // 🔥 NUEVO: Estados para el contexto de fogueos y frecuencia de entrenamiento
+  const [competenciasSecundarias, setCompetenciasSecundarias] = useState<CompetenciaPlanificada[]>([])
+  const [fechaCompetenciaPrincipal, setFechaCompetenciaPrincipal] = useState('')
+  const [diasEntrenamiento, setDiasEntrenamiento] = useState(6) // Por defecto 6, se actualiza de la DB
+
+  const [columnas, setColumnas] = useState<ColumnasSesion>(() => crearColumnasVacias())
 
   const AparatoIconoActivo = useMemo(() => {
     return aparatosMenu.find(a => a.nombre === filtroAparato)?.Icono || Globe;
@@ -109,21 +175,14 @@ export default function ConstructorSesion({
     return ['Aparato Principal', 'Aparato Secundario / Básicos'];
   }, [enfoqueDia]);
 
-  // 🔥 NUEVO CEREBRO DE TIEMPOS (Siempre suma 120 mins) 🔥
   const tiemposCalculados = useMemo(() => {
-    const fase = (objetivoFase || '').toLowerCase();
-    
-    // 1. Etapa Competitiva / Pre-competitiva (Prioridad: Pasadas)
-    if (fase.includes('compet') || fase.includes('torneo')) {
-      return { calentamiento: '15', prep_fisica: '15', tecnico: '25', rutinas: '45', flexibilidad: '10', cierre: '10' };
-    }
-    // 2. Etapa de Adquisición / Preparación Base (Prioridad: Físico y Técnica)
-    if (fase.includes('base') || fase.includes('física') || fase.includes('adquisición') || fase.includes('preparatorio')) {
-      return { calentamiento: '15', prep_fisica: '35', tecnico: '45', rutinas: '0', flexibilidad: '15', cierre: '10' };
-    }
-    // 3. Etapa de Desarrollo / Híbrida (Balanceado estándar)
-    return { calentamiento: '15', prep_fisica: '20', tecnico: '40', rutinas: '20', flexibilidad: '15', cierre: '10' };
-  }, [objetivoFase]);
+    const fechaSesion = parsearFecha(fechaExactaDia)
+    const proximidad = getCompetitionProximityForDate(
+      fechaSesion,
+      [fechaCompetenciaPrincipal, ...competenciasSecundarias.map(comp => comp.fecha)]
+    )
+    return getSessionTimeDistribution(objetivoFase, proximidad.isNear)
+  }, [competenciasSecundarias, fechaCompetenciaPrincipal, fechaExactaDia, objetivoFase]);
 
   const bloquesDefinicion = useMemo(() => [
     { 
@@ -182,11 +241,43 @@ export default function ConstructorSesion({
       else query = query.eq('club_id', clubId)
       const { data } = await query
       if (data) {
-        setTodosLosEjercicios(data.map(e => ({ id: e.id, contenido: e.nombre, categoria: e.categoria, descripcion: e.descripcion, video_url: e.video_url, aparato: e.aparato })))
+        setTodosLosEjercicios(data.map(e => ({
+          id: e.id,
+          contenido: e.nombre,
+          categoria: e.categoria,
+          descripcion: e.descripcion,
+          video_url: e.video_url,
+          aparato: e.aparato
+        })))
       }
     }
     fetchEjercicios()
   }, [clubId])
+
+  // 🔥 NUEVO: Radar de Configuración del Grupo (Fogueos y Frecuencia)
+  useEffect(() => {
+    if (!grupoId) return;
+    const cargarConfigGrupo = async () => {
+      try {
+        const { data } = await supabase.from('configuracion_grupos')
+          .select('competencias_secundarias, fecha_competencia, horario_semanal')
+          .eq('grupo_id', grupoId)
+          .single();
+          
+        if (data) {
+          if (Array.isArray(data.competencias_secundarias)) setCompetenciasSecundarias(data.competencias_secundarias as CompetenciaPlanificada[]);
+          if (data.fecha_competencia) setFechaCompetenciaPrincipal(data.fecha_competencia);
+          if (data.horario_semanal && Array.isArray(data.horario_semanal)) {
+            // Contamos cuántos días a la semana están configurados
+            setDiasEntrenamiento(data.horario_semanal.length || 6);
+          }
+        }
+      } catch (error) {
+        console.error("Error cargando la configuración del grupo:", error);
+      }
+    };
+    cargarConfigGrupo();
+  }, [grupoId]);
 
   useEffect(() => {
     if (!clubId || !nivelSeleccionado) return;
@@ -197,11 +288,11 @@ export default function ConstructorSesion({
         if (!comps || comps.length === 0) { setCargandoContexto(false); return }
         const ultimaComp = comps[0]
 
-        const { data: grupos } = await supabase.from('grupos').select('id').eq('nivel', nivelSeleccionado)
+        const { data: grupos } = await supabase.from('grupos').select('id').eq('nivel', nivelSeleccionado).eq('club_id', clubId)
         if (!grupos || grupos.length === 0) { setCargandoContexto(false); return }
         const grupoIds = grupos.map(g => g.id)
 
-        const { data: atletas } = await supabase.from('atletas').select('id').in('grupo_id', grupoIds)
+        const { data: atletas } = await supabase.from('atletas').select('id').eq('club_id', clubId).in('grupo_id', grupoIds)
         if (!atletas || atletas.length === 0) { setCargandoContexto(false); return }
         const atletaIds = atletas.map(a => a.id)
 
@@ -250,7 +341,8 @@ export default function ConstructorSesion({
       
       if (sesionDia && sesionDia.ejercicios) {
         setSesionId(sesionDia.id) 
-        const refrescarColumna = (colVieja: any[]) => {
+        const ejerciciosGuardados = sesionDia.ejercicios as Record<string, EjercicioSesion[] | undefined>
+        const refrescarColumna = (colVieja?: EjercicioSesion[]) => {
           if (!colVieja) return []
           return colVieja.map(viejo => {
             const fresco = todosLosEjercicios.find(f => f.id === viejo.id)
@@ -259,28 +351,26 @@ export default function ConstructorSesion({
           })
         }
         
-        const columnasRestauradas: any = {}
+        const columnasRestauradas: ColumnasSesion = {}
         subclavesEstaticas.forEach(k => {
-          columnasRestauradas[k] = refrescarColumna(sesionDia.ejercicios[k])
+          columnasRestauradas[k] = refrescarColumna(ejerciciosGuardados[k])
         })
 
         // Restituir compatibilidad con nombres viejos
-        if (!sesionDia.ejercicios.calentamiento_general && sesionDia.ejercicios.calentamiento) columnasRestauradas['calentamiento_general'] = refrescarColumna(sesionDia.ejercicios.calentamiento)
-        if (!sesionDia.ejercicios.prep_fisica_core && sesionDia.ejercicios['prep-fisica']) columnasRestauradas['prep_fisica_core'] = refrescarColumna(sesionDia.ejercicios['prep-fisica'])
-        if (!sesionDia.ejercicios.tecnico_aparato1 && sesionDia.ejercicios.tecnico) columnasRestauradas['tecnico_aparato1'] = refrescarColumna(sesionDia.ejercicios.tecnico)
-        if (!sesionDia.ejercicios.flexibilidad_activa && sesionDia.ejercicios.flexibilidad) columnasRestauradas['flexibilidad_activa'] = refrescarColumna(sesionDia.ejercicios.flexibilidad)
-        if (!sesionDia.ejercicios.cierre_elongacion && sesionDia.ejercicios.cierre) columnasRestauradas['cierre_elongacion'] = refrescarColumna(sesionDia.ejercicios.cierre)
+        if (!ejerciciosGuardados.calentamiento_general && ejerciciosGuardados.calentamiento) columnasRestauradas['calentamiento_general'] = refrescarColumna(ejerciciosGuardados.calentamiento)
+        if (!ejerciciosGuardados.prep_fisica_core && ejerciciosGuardados['prep-fisica']) columnasRestauradas['prep_fisica_core'] = refrescarColumna(ejerciciosGuardados['prep-fisica'])
+        if (!ejerciciosGuardados.tecnico_aparato1 && ejerciciosGuardados.tecnico) columnasRestauradas['tecnico_aparato1'] = refrescarColumna(ejerciciosGuardados.tecnico)
+        if (!ejerciciosGuardados.flexibilidad_activa && ejerciciosGuardados.flexibilidad) columnasRestauradas['flexibilidad_activa'] = refrescarColumna(ejerciciosGuardados.flexibilidad)
+        if (!ejerciciosGuardados.cierre_elongacion && ejerciciosGuardados.cierre) columnasRestauradas['cierre_elongacion'] = refrescarColumna(ejerciciosGuardados.cierre)
 
-        const idsEnUso = new Set(subclavesEstaticas.flatMap(key => (columnasRestauradas[key] || []).map((e:any) => e.id)))
+        const idsEnUso = new Set(subclavesEstaticas.flatMap(key => (columnasRestauradas[key] || []).map(e => e.id)))
         
         columnasRestauradas['banco'] = todosLosEjercicios.filter(e => !idsEnUso.has(e.id))
         setColumnas(columnasRestauradas)
         setHaySesionParaGuardar(false)
       } else {
         setSesionId(null) 
-        const colVacias: any = { 'banco': [...todosLosEjercicios] }
-        subclavesEstaticas.forEach(k => colVacias[k] = [])
-        setColumnas(colVacias)
+        setColumnas(crearColumnasVacias([...todosLosEjercicios]))
         setHaySesionParaGuardar(false)
       }
       setCargandoDia(false)
@@ -301,10 +391,9 @@ export default function ConstructorSesion({
   }
 
   const bancoFiltrado = useMemo(() => {
-    const idsEnUso = new Set(subclavesEstaticas.flatMap(key => (columnas[key] || []).map((e:any) => e.id)))
+    const idsEnUso = new Set(subclavesEstaticas.flatMap(key => (columnas[key] || []).map(e => e.id)))
     let disponibles = todosLosEjercicios.filter(e => !idsEnUso.has(e.id))
     
-    // Filtro por Categoría
     if (filtroActivo !== 'Todos') {
       const filtroNormalizado = normalizarTexto(filtroActivo);
       disponibles = disponibles.filter(e => 
@@ -314,12 +403,10 @@ export default function ConstructorSesion({
       )
     }
 
-    // Filtro por Aparato
     if (filtroAparato !== 'Todos los Aparatos') {
       disponibles = disponibles.filter(e => e.aparato === filtroAparato)
     }
     
-    // Filtro por Búsqueda de texto
     if (busqueda) {
       const busquedaNormalizada = normalizarTexto(busqueda);
       disponibles = disponibles.filter(e => normalizarTexto(e.contenido).includes(busquedaNormalizada))
@@ -328,23 +415,41 @@ export default function ConstructorSesion({
     return disponibles
   }, [columnas, todosLosEjercicios, filtroActivo, filtroAparato, busqueda])
 
-  const calcularDosisUnica = async (ejercicio: any, colId: string) => {
+  const calcularDosisUnica = async (ejercicio: EjercicioSesion, colId: string) => {
     try {
       const response = await fetch('/api/ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isSingle: true, ejercicioUnico: ejercicio, grupoId, nivel: nivelSeleccionado, objetivo: objetivoFase, semana: semanaActual, dia: diaActivo, enfoqueDia: enfoqueDia, horario: horaDia, nombreClub })
+        body: JSON.stringify({ 
+          isSingle: true, 
+          ejercicioUnico: ejercicio, 
+          grupoId, 
+          nivel: nivelSeleccionado, 
+          objetivo: objetivoFase, 
+          semana: semanaActual, 
+          dia: diaActivo, 
+          enfoqueDia: enfoqueDia, 
+          horario: horaDia, 
+          nombreClub,
+          // 🔥 NUEVO: Enviamos el contexto extra a la IA
+          competenciasSecundarias: [
+            ...(fechaCompetenciaPrincipal ? [{ nombre: 'Competencia principal', fecha: fechaCompetenciaPrincipal }] : []),
+            ...competenciasSecundarias,
+          ],
+          diasEntrenamiento,
+          fechaSesionActual: parsearFecha(fechaExactaDia)
+        })
       })
-      const dosisGenerada = await response.json()
+      const dosisGenerada = await response.json() as DosificacionPorGrupo & { error?: string }
       if(!dosisGenerada.error) {
-         setColumnas((prev: any) => {
-            const nuevas = {...prev}
-            const index = nuevas[colId].findIndex((e:any) => e.id === ejercicio.id)
+         setColumnas((prev) => {
+            const nuevas = clonarColumnas(prev)
+            const index = nuevas[colId].findIndex(e => e.id === ejercicio.id)
             if (index !== -1) nuevas[colId][index].dosificacion = dosisGenerada
             return nuevas
          })
          setHaySesionParaGuardar(true)
       }
-    } catch (error) { mostrarNotificacion('Error al calcular carga', 'error') }
+    } catch { mostrarNotificacion('Error al calcular carga', 'error') }
   }
 
   const autocompletarSesion = async () => {
@@ -352,31 +457,48 @@ export default function ConstructorSesion({
     try {
       const response = await fetch('/api/ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grupoId, nivel: nivelSeleccionado, objetivo: objetivoFase, semana: semanaActual, dia: diaActivo, enfoqueDia: enfoqueDia, horario: horaDia, nombreClub })
+        body: JSON.stringify({ 
+          grupoId, 
+          nivel: nivelSeleccionado, 
+          objetivo: objetivoFase, 
+          semana: semanaActual, 
+          dia: diaActivo, 
+          enfoqueDia: enfoqueDia, 
+          horario: horaDia, 
+          nombreClub,
+          // 🔥 NUEVO: Enviamos el contexto extra a la IA
+          competenciasSecundarias: [
+            ...(fechaCompetenciaPrincipal ? [{ nombre: 'Competencia principal', fecha: fechaCompetenciaPrincipal }] : []),
+            ...competenciasSecundarias,
+          ],
+          diasEntrenamiento,
+          fechaSesionActual: parsearFecha(fechaExactaDia)
+        })
       })
-      const iaSugerencia = await response.json()
-      const nuevasColumnas = { ...columnas }
-      const idsEnUso = new Set()
+      const iaSugerencia = await response.json() as IaSesionResponse
+      const nuevasColumnas = clonarColumnas(columnas)
+      const idsEnUso = new Set<string>()
 
-      const procesarArregloIA = (arrIA: any[]) => {
-        return (arrIA || []).map((item: any) => {
+      const procesarArregloIA = (arrIA: IaEjercicioItem[] = []): EjercicioSesion[] => {
+        return (arrIA || []).reduce<EjercicioSesion[]>((acc, item) => {
           const idEjercicio = typeof item === 'string' ? item : item.id
           const objDosificacion = typeof item === 'string' ? null : item.dosificacion
           const ej = todosLosEjercicios.find(e => e.id === idEjercicio)
-          if (ej) { idsEnUso.add(ej.id); return { ...ej, dosificacion: objDosificacion } }
-          return null
-        }).filter(Boolean)
+          if (ej) {
+            idsEnUso.add(ej.id)
+            acc.push({ ...ej, dosificacion: objDosificacion })
+          }
+          return acc
+        }, [])
       }
 
       if (!iaSugerencia.error) {
-        // 1. CALENTAMIENTO
         const calGenerado = procesarArregloIA(iaSugerencia['calentamiento']);
         nuevasColumnas['calentamiento_general'] = calGenerado.slice(0, Math.ceil(calGenerado.length/2));
         nuevasColumnas['calentamiento_especifico'] = calGenerado.slice(Math.ceil(calGenerado.length/2));
 
-        // 2. PREP FISICA
         const pfGenerado = procesarArregloIA(iaSugerencia['prep-fisica']);
-        const pfCore: any[] = []; const pfSup: any[] = []; const pfInf: any[] = [];
+        const pfCore: EjercicioSesion[] = []; const pfSup: EjercicioSesion[] = []; const pfInf: EjercicioSesion[] = [];
         pfGenerado.forEach(ej => {
           const txt = (ej.contenido + ' ' + ej.categoria + ' ' + (ej.descripcion||'')).toLowerCase();
           if (txt.includes('brazo') || txt.includes('flexi') || txt.includes('dominada') || txt.includes('hombro') || txt.includes('empuje') || txt.includes('asimétricas')) pfSup.push(ej);
@@ -387,9 +509,8 @@ export default function ConstructorSesion({
         nuevasColumnas['prep_fisica_superior'] = pfSup;
         nuevasColumnas['prep_fisica_inferior'] = pfInf;
 
-        // 3. TÉCNICO
         const tecnicoGenerado = procesarArregloIA(iaSugerencia['tecnico']);
-        const tec1: any[] = []; const tec2: any[] = [];
+        const tec1: EjercicioSesion[] = []; const tec2: EjercicioSesion[] = [];
         tecnicoGenerado.forEach(ej => {
             const aparatoEj = ej.aparato || '';
             if (aparatoEj === nombreAparato1) { tec1.push(ej); } 
@@ -398,9 +519,8 @@ export default function ConstructorSesion({
         nuevasColumnas['tecnico_aparato1'] = tec1;
         nuevasColumnas['tecnico_aparato2'] = tec2;
 
-        // 4. ESQUEMAS Y PASADAS
         const rutinasGeneradas = procesarArregloIA(iaSugerencia['rutinas'] || []);
-        const rutMitades: any[] = []; const rutCompletas: any[] = [];
+        const rutMitades: EjercicioSesion[] = []; const rutCompletas: EjercicioSesion[] = [];
         rutinasGeneradas.forEach(ej => {
             const cat = (ej.categoria || '').toLowerCase();
             if (cat.includes('completa')) rutCompletas.push(ej);
@@ -409,47 +529,47 @@ export default function ConstructorSesion({
         nuevasColumnas['rutinas_mitades'] = rutMitades;
         nuevasColumnas['rutinas_completas'] = rutCompletas;
 
-        // 5. FLEXIBILIDAD
         const flexGenerado = procesarArregloIA(iaSugerencia['flexibilidad']);
         nuevasColumnas['flexibilidad_activa'] = flexGenerado.slice(0, Math.ceil(flexGenerado.length/2));
         nuevasColumnas['flexibilidad_pasiva'] = flexGenerado.slice(Math.ceil(flexGenerado.length/2));
 
-        // 6. CIERRE
         const cierreGenerado = procesarArregloIA(iaSugerencia['cierre']);
         nuevasColumnas['cierre_elongacion'] = cierreGenerado;
         nuevasColumnas['cierre_retroalimentacion'] = []; 
       }
       setColumnas(nuevasColumnas); setHaySesionParaGuardar(true); setBancoAbierto(false);
       mostrarNotificacion('Distribución completada ✨', 'exito')
-    } catch (error) { mostrarNotificacion('Error al calcular cargas', 'error')
+    } catch { mostrarNotificacion('Error al calcular cargas', 'error')
     } finally { setIsGenerating(false) }
   }
 
   const guardarSesionEnBaseDeDatos = async () => {
     setGuardando(true)
     try {
-      const datosSesion: any = {}
+      const datosSesion: ColumnasSesion = {}
       subclavesEstaticas.forEach(k => datosSesion[k] = columnas[k])
 
-      const payload: any = { club_id: clubId, nivel: nivelSeleccionado, objetivo: `${objetivoFase} - ${fechaExactaDia}`, ejercicios: datosSesion, fecha_calendario: parsearFecha(fechaExactaDia) }
-      if (sesionId) payload.id = sesionId; 
-      const { data, error } = await supabase.from('sesiones').upsert([payload]).select().single()
+      const payload = { club_id: clubId, nivel: nivelSeleccionado, objetivo: `${objetivoFase} - ${fechaExactaDia}`, ejercicios: datosSesion, fecha_calendario: parsearFecha(fechaExactaDia) }
+      const { data, error } = sesionId
+        ? await supabase.from('sesiones').update(payload).eq('id', sesionId).eq('club_id', clubId).select().single()
+        : await supabase.from('sesiones').insert([payload]).select().single()
       if (error) throw error
       if (data) setSesionId(data.id) 
       mostrarNotificacion('¡Sesión guardada exitosamente! 🏆', 'exito'); setHaySesionParaGuardar(false)
-    } catch (error: any) { mostrarNotificacion('Error al guardar sesión', 'error');
+    } catch { mostrarNotificacion('Error al guardar sesión', 'error');
     } finally { setGuardando(false) }
   }
 
   const onDragEnd = (result: DropResult) => {
     const { source, destination } = result
     if (!destination || (source.droppableId === destination.droppableId && source.index === destination.index)) return
-    const nuevasColumnas = { ...columnas }
+    const nuevasColumnas = clonarColumnas(columnas)
     const origenArray = source.droppableId === 'banco' ? [...bancoFiltrado] : nuevasColumnas[source.droppableId]
     const [ejercicioMovido] = origenArray.splice(source.index, 1)
+    if (!ejercicioMovido) return
 
     if (source.droppableId === 'banco' && destination.droppableId !== 'banco') {
-        const indexReal = nuevasColumnas['banco'].findIndex((e:any) => e.id === ejercicioMovido.id)
+        const indexReal = nuevasColumnas['banco'].findIndex(e => e.id === ejercicioMovido.id)
         if(indexReal !== -1) nuevasColumnas['banco'].splice(indexReal, 1)
         ejercicioMovido.dosificacion = { avanzado: '⏳ Calculando...', base: '⏳ Calculando...', desarrollo: '⏳ Calculando...' }
         nuevasColumnas[destination.droppableId].splice(destination.index, 0, ejercicioMovido)
@@ -468,15 +588,16 @@ export default function ConstructorSesion({
   }
 
   const actualizarDosificacionManual = (nivel: string, valor: string) => {
-    let nuevaDosis = typeof ejercicioSeleccionado.dosificacion === 'object' && ejercicioSeleccionado.dosificacion !== null ? { ...ejercicioSeleccionado.dosificacion } : { avanzado: '', base: '', desarrollo: '' }
+    if (!ejercicioSeleccionado) return
+    const nuevaDosis = typeof ejercicioSeleccionado.dosificacion === 'object' && ejercicioSeleccionado.dosificacion !== null ? { ...ejercicioSeleccionado.dosificacion } : { avanzado: '', base: '', desarrollo: '' }
     nuevaDosis[nivel] = valor
     const ejercicioActualizado = { ...ejercicioSeleccionado, dosificacion: nuevaDosis }
     setEjercicioSeleccionado(ejercicioActualizado)
 
-    const nuevasColumnas = { ...columnas }
+    const nuevasColumnas = clonarColumnas(columnas)
     for (const col in nuevasColumnas) {
       if (col === 'banco') continue
-      const index = nuevasColumnas[col].findIndex((e: any) => e.id === ejercicioActualizado.id)
+      const index = nuevasColumnas[col].findIndex(e => e.id === ejercicioActualizado.id)
       if (index !== -1) { nuevasColumnas[col][index] = ejercicioActualizado; break }
     }
     setColumnas(nuevasColumnas); setHaySesionParaGuardar(true)
@@ -593,7 +714,7 @@ export default function ConstructorSesion({
                     </div>
 
                     <div className="flex flex-col gap-3 flex-1">
-                      {bloque.subdivisiones.map((sub, idx) => (
+                      {bloque.subdivisiones.map((sub) => (
                         <div key={sub.id} className="flex flex-col flex-1 border border-black/5 bg-white/30 rounded-lg p-2">
                           <h4 className={`text-[9px] font-black uppercase tracking-widest mb-2 ${bloque.textColor} opacity-80 border-b border-black/5 pb-1`}>
                             {sub.nombre}
@@ -612,8 +733,8 @@ export default function ConstructorSesion({
                                 {cargandoDia ? (
                                   <div className="flex justify-center py-4 opacity-50"><Loader2 className="w-4 h-4 animate-spin" /></div>
                                 ) : (
-                                  columnas[sub.id]?.map((ejercicio: any, index: number) => {
-                                    const estaCalculando = ejercicio.dosificacion?.avanzado?.includes('Calculando');
+                                  columnas[sub.id]?.map((ejercicio, index) => {
+                                    const estaCalculando = typeof ejercicio.dosificacion === 'object' && ejercicio.dosificacion?.avanzado?.includes('Calculando');
                                     return (
                                       <Draggable key={ejercicio.id} draggableId={ejercicio.id} index={index}>
                                         {(provided, snapshot) => (
@@ -658,10 +779,8 @@ export default function ConstructorSesion({
               {bancoAbierto && (
                 <div className="p-4 pt-0 border-t border-slate-200 bg-white rounded-b-xl">
                   
-                  {/* 🔥 NUEVO LAYOUT DE BOTONES RESPONSIVO Y ORDENADO 🔥 */}
                   <div className="flex flex-col gap-4 mb-4 mt-4">
                     
-                    {/* Fila 1: Buscador y Aparatos */}
                     <div className="flex flex-col sm:flex-row gap-4 w-full">
                       <div className="relative w-full sm:flex-1">
                         <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
@@ -706,7 +825,6 @@ export default function ConstructorSesion({
                       </div>
                     </div>
 
-                    {/* Fila 2: Etiquetas de Categoría (Scrollable horizontalmente) */}
                     <div className="flex gap-2 overflow-x-auto pb-2 w-full custom-scrollbar sm:justify-start">
                       {categoriasFiltro.map(cat => (
                         <button 
@@ -726,7 +844,7 @@ export default function ConstructorSesion({
                         {bancoFiltrado.length === 0 ? (
                           <p className="text-slate-400 text-sm italic w-full text-center py-6">No se encontraron tarjetas con estos filtros.</p>
                         ) : (
-                          bancoFiltrado.map((ejercicio: any, index: number) => (
+                          bancoFiltrado.map((ejercicio, index) => (
                             <Draggable key={ejercicio.id} draggableId={ejercicio.id} index={index}>
                               {(provided, snapshot) => (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`group bg-white p-3 rounded-xl border border-slate-300 shadow-sm text-sm font-bold text-slate-700 flex flex-col items-start justify-between gap-2 w-full sm:w-64 ${snapshot.isDragging ? 'ring-2 ring-rose-400 z-50' : 'hover:border-slate-400 cursor-pointer'}`} onClick={() => { setEjercicioSeleccionado(ejercicio); setGrupoTabActivo('avanzado'); }}>
@@ -883,7 +1001,7 @@ export default function ConstructorSesion({
                         <div className="bg-slate-100 px-3 py-1 text-[9px] font-black text-slate-600 uppercase tracking-widest border-b border-slate-300">
                           {sub.nombre}
                         </div>
-                        {ejerciciosSub.map((ej: any, i: number) => (
+                        {ejerciciosSub.map((ej, i) => (
                           <div key={ej.id} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b border-slate-200 last:border-b-0`}>
                             <div className="p-3 border-r border-slate-300 w-1/4 font-bold text-slate-800 text-[11px]">{ej.contenido}</div>
                             <div className="p-3 border-r border-slate-300 flex-1 font-medium text-slate-700 text-[10px] whitespace-pre-line">{typeof ej.dosificacion === 'string' ? ej.dosificacion : ej.dosificacion?.avanzado || '-'}</div>
@@ -932,4 +1050,4 @@ export default function ConstructorSesion({
       `}} />
     </>
   )
-} 
+}

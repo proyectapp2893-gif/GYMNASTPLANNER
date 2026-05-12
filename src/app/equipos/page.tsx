@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useClubStore } from '../../../store/useClubStore'
 import { Users, PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield } from 'lucide-react'
+import type { Grupo } from '../../lib/types'
 
 export default function GestorEquipos() {
-  const [grupos, setGrupos] = useState<any[]>([])
+  const { clubId } = useClubStore()
+  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [notificacion, setNotificacion] = useState({ mostrar: false, mensaje: '', tipo: '' })
@@ -14,16 +17,17 @@ export default function GestorEquipos() {
 
   const nivelesUSAG = ['Nivel 1', 'Nivel 2', 'Nivel 3', 'Nivel 4', 'Nivel 5', 'Nivel 6', 'Nivel 7', 'Nivel 8', 'Nivel 9', 'Nivel 10', 'Élite']
 
-  useEffect(() => {
-    cargarGrupos()
-  }, [])
-
-  const cargarGrupos = async () => {
+  const cargarGrupos = useCallback(async () => {
+    if (!clubId) return
     setCargando(true)
-    const { data } = await supabase.from('grupos').select('*').order('nivel', { ascending: true })
-    setGrupos(data || [])
+    const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId).order('nivel', { ascending: true })
+    setGrupos((data || []) as Grupo[])
     setCargando(false)
-  }
+  }, [clubId])
+
+  useEffect(() => {
+    if (clubId) void cargarGrupos()
+  }, [clubId, cargarGrupos])
 
   const mostrarToast = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
@@ -32,17 +36,19 @@ export default function GestorEquipos() {
 
   const crearGrupo = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!clubId) return mostrarToast('Error: No se ha detectado el club activo', 'error')
     setGuardando(true)
     try {
       const { error } = await supabase.from('grupos').insert([{
         nombre: nuevoGrupo.nombre,
-        nivel: nuevoGrupo.nivel
+        nivel: nuevoGrupo.nivel,
+        club_id: clubId
       }])
       if (error) throw error
       
       mostrarToast('Grupo creado exitosamente', 'exito')
       setNuevoGrupo({ nombre: '', nivel: 'Nivel 1' }) // Limpiar formulario
-      cargarGrupos() // Recargar lista
+      void cargarGrupos() // Recargar lista
     } catch (error) {
       console.error(error)
       mostrarToast('Error al crear el grupo', 'error')
@@ -55,11 +61,11 @@ export default function GestorEquipos() {
     if (!confirm(`¿Estás seguro de eliminar el grupo "${nombre}"? Esto podría afectar a las atletas inscritas en él.`)) return
     
     try {
-      const { error } = await supabase.from('grupos').delete().eq('id', id)
+      const { error } = await supabase.from('grupos').delete().eq('id', id).eq('club_id', clubId)
       if (error) throw error
       
       mostrarToast('Grupo eliminado', 'exito')
-      cargarGrupos()
+      void cargarGrupos()
     } catch (error) {
       console.error(error)
       mostrarToast('Error al eliminar el grupo', 'error')

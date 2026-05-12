@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from 'react'
-import { Activity, TrendingUp, Zap, Info, MapPin } from 'lucide-react'
+import { Activity, TrendingUp, Zap, MapPin } from 'lucide-react'
 import {
   ComposedChart,
   Line,
@@ -14,137 +14,143 @@ import {
   Legend,
   ReferenceLine
 } from 'recharts'
+import { calculateCurrentWeek, getWeekPlan, type PlanningConfig, type MicrocycleType } from '../../lib/sports-planning'
 
 interface GraficosCargaProps {
   semanaNum: number;
   mesocicloActivo: string;
-  horarioPersonalizado?: any;
+  configuracion?: PlanningConfig;
+  horarioPersonalizado?: unknown;
 }
 
-export default function GraficosCarga({ semanaNum, mesocicloActivo }: GraficosCargaProps) {
+interface MacroChartData {
+  name: string
+  semanaOriginal: number
+  tipoMicrociclo: string
+  colorMicrociclo: string
+  Volumen: number
+  Intensidad: number
+  FormaDeportiva: number
+}
+
+interface TooltipEntry {
+  color?: string
+  name?: string
+  value?: number | string
+  payload: MacroChartData
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipEntry[]
+  semanaNum: number
+  semanaRealActual: number
+}
+
+interface CustomTickProps {
+  x?: number
+  y?: number
+  payload?: { value?: string }
+  datosMacrociclo?: MacroChartData[]
+  semanaNum?: number
+}
+
+const microcycleChartStyle: Record<MicrocycleType, { tipo: string; color: string }> = {
+  A: { tipo: 'Ajuste', color: '#34d399' },
+  C: { tipo: 'Carga', color: '#fbbf24' },
+  CH: { tipo: 'Choque', color: '#f43f5e' },
+  R: { tipo: 'Recuperación', color: '#60a5fa' },
+  AP: { tipo: 'Aproximación', color: '#a78bfa' },
+  COMP: { tipo: 'Competencia', color: '#f59e0b' },
+  T: { tipo: 'Tránsito', color: '#94a3b8' },
+}
+
+function CustomTooltip({ active, payload, semanaNum, semanaRealActual }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    const datos = payload[0].payload;
+    const esActual = datos.semanaOriginal === semanaNum;
+    const esVidaReal = datos.semanaOriginal === semanaRealActual;
+
+    return (
+      <div className={`bg-white p-4 rounded-xl border shadow-xl ${esActual ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+        <div className="font-black text-slate-800 mb-2 border-b border-slate-100 pb-2 flex flex-col gap-1">
+          <div className="flex justify-between items-center gap-4">
+            <span>Semana {datos.semanaOriginal}</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest text-white" style={{ backgroundColor: datos.colorMicrociclo }}>
+              {datos.tipoMicrociclo}
+            </span>
+          </div>
+          {esActual && <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">👀 Visualizando Ahora</span>}
+          {esVidaReal && <span className="text-[10px] text-rose-500 font-bold uppercase tracking-widest flex items-center gap-1"><MapPin className="w-3 h-3"/> Semana Actual (Real)</span>}
+        </div>
+        {payload.map((entry, index) => (
+          <div key={index} className="flex items-center gap-2 mb-1.5 last:mb-0">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide w-24">{entry.name}:</span>
+            <span className="text-sm font-black" style={{ color: entry.color }}>{entry.value}%</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function CustomTick({ x = 0, y = 0, payload, datosMacrociclo = [], semanaNum }: CustomTickProps) {
+  const dato = datosMacrociclo.find(d => d.name === payload?.value);
+  if (!dato) return null;
+
+  const esSeleccionada = dato.semanaOriginal === semanaNum;
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={16} textAnchor="middle" fill={esSeleccionada ? '#4f46e5' : '#94a3b8'} fontSize={10} fontWeight={esSeleccionada ? 900 : 700}>
+        {payload?.value}
+      </text>
+      <circle cx={0} cy={26} r={4} fill={dato.colorMicrociclo} stroke="#fff" strokeWidth={1} />
+    </g>
+  );
+}
+
+export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracion }: GraficosCargaProps) {
   
-  // 🔥 LÓGICA DINÁMICA: Calculamos la semana real actual basada en la fecha de hoy
   const semanaRealActual = useMemo(() => {
-    // Aquí idealmente calcularías la semana basándote en la fecha de inicio de la temporada.
-    // Por ahora, para el ejemplo, supongamos que la "vida real" va por la Semana 12.
-    // (Puedes conectar esto a tu store global o a un cálculo de fechas si lo prefieres)
-    return 12; 
-  }, []);
+    return configuracion ? calculateCurrentWeek(configuracion) : 1
+  }, [configuracion]);
 
-  const datosMacrociclo = useMemo(() => {
-    return Array.from({ length: 24 }, (_, i) => {
-      const semana = i + 1;
-      let volumen, intensidad, forma;
-      // 🔥 NUEVO: Asignación de Microciclos (Ajuste, Carga, Choque, Recuperación, Competitivo)
-      let tipoMicrociclo = 'Carga'; 
-      let colorMicrociclo = '#fbbf24'; // Amarillo
-
-      if (semana <= 8) { // Preparación General
-        volumen = 85 - (semana * 1.5);
-        intensidad = 30 + (semana * 2);
-        forma = 20 + (semana * 2.5);
-        if (semana % 4 === 0) { tipoMicrociclo = 'Recuperación'; colorMicrociclo = '#60a5fa'; } // Azul
-        else if (semana === 1) { tipoMicrociclo = 'Ajuste'; colorMicrociclo = '#34d399'; } // Verde
-        else { tipoMicrociclo = 'Carga'; colorMicrociclo = '#fbbf24'; }
-      } else if (semana <= 16) { // Preparación Especial
-        volumen = 70 - ((semana - 8) * 3);
-        intensidad = 46 + ((semana - 8) * 3);
-        forma = 40 + ((semana - 8) * 3);
-        if (semana % 3 === 0) { tipoMicrociclo = 'Choque'; colorMicrociclo = '#f43f5e'; } // Rojo
-        else if (semana % 4 === 0) { tipoMicrociclo = 'Recuperación'; colorMicrociclo = '#60a5fa'; }
-        else { tipoMicrociclo = 'Carga'; colorMicrociclo = '#fbbf24'; }
-      } else if (semana <= 21) { // Pre-Competitivo
-        volumen = 46 - ((semana - 16) * 4);
-        intensidad = 70 + ((semana - 16) * 4);
-        forma = 64 + ((semana - 16) * 5);
-        if (semana === 20 || semana === 21) { tipoMicrociclo = 'Aproximación'; colorMicrociclo = '#a78bfa'; } // Morado
-        else { tipoMicrociclo = 'Choque'; colorMicrociclo = '#f43f5e'; }
-      } else if (semana <= 22) { // Competitivo (Pico)
-        volumen = 25;
-        intensidad = 95;
-        forma = 95;
-        tipoMicrociclo = 'Competencia'; colorMicrociclo = '#f59e0b'; // Oro
-      } else { // Transición
-        volumen = 20;
-        intensidad = 40;
-        forma = 50;
-        tipoMicrociclo = 'Tránsito'; colorMicrociclo = '#94a3b8'; // Gris
-      }
-
-      const ruido = () => (Math.random() * 8) - 4;
+  const datosMacrociclo = useMemo<MacroChartData[]>(() => {
+    const total = Math.max(1, Number(configuracion?.semanas_totales || 24))
+    return Array.from({ length: total }, (_, i) => {
+      const semana = i + 1
+      const plan = configuracion
+        ? getWeekPlan(configuracion, semana)
+        : getWeekPlan({ semanas_totales: total, semanas_preparatorio: 19, semanas_competitivo: 5 }, semana)
+      const micro = microcycleChartStyle[plan.microciclo]
       
       return { 
-        name: `S${semana}`, // Más corto para que quepa mejor
+        name: `S${semana}`,
         semanaOriginal: semana,
-        tipoMicrociclo,
-        colorMicrociclo,
-        Volumen: Math.round(Math.max(10, Math.min(100, volumen + ruido()))), 
-        Intensidad: Math.round(Math.max(10, Math.min(100, intensidad + ruido()))), 
-        FormaDeportiva: Math.round(Math.max(10, Math.min(100, forma + ruido()))) 
+        tipoMicrociclo: micro.tipo,
+        colorMicrociclo: micro.color,
+        Volumen: plan.carga.volumen,
+        Intensidad: plan.carga.intensidad,
+        FormaDeportiva: plan.carga.forma
       };
     });
-  }, []);
+  }, [configuracion]);
 
   // 🔥 LÓGICA DINÁMICA: Calcula el enfoque primario de la tarjeta oscura según la semana clickeada
   const estadoFase = useMemo(() => {
     const datoSemana = datosMacrociclo.find(d => d.semanaOriginal === semanaNum);
     if (!datoSemana) return { enfoque: 'Planificación', estado: 'Inactivo', color: 'text-slate-400' };
 
-    if (semanaNum <= 8) return { enfoque: 'Construcción / Base Física', estado: 'Acumulativo', color: 'text-emerald-400' };
-    if (semanaNum <= 16) return { enfoque: 'Desarrollo Técnico Específico', estado: 'Intensivo', color: 'text-amber-400' };
-    if (semanaNum <= 21) return { enfoque: 'Modelado Competitivo', estado: 'Pre-Competencia', color: 'text-purple-400' };
-    if (semanaNum <= 22) return { enfoque: 'Puesta a Punto (Tapering)', estado: 'PICO DE FORMA', color: 'text-rose-400' };
+    const plan = configuracion ? getWeekPlan(configuracion, semanaNum) : null;
+    if (plan?.etapa === 'Preparación General') return { enfoque: 'Construcción / Base Física', estado: 'Acumulativo', color: 'text-emerald-400' };
+    if (plan?.etapa === 'Preparación Especial') return { enfoque: 'Desarrollo Técnico Específico', estado: 'Intensivo', color: 'text-amber-400' };
+    if (plan?.etapa === 'Pre-Competitiva') return { enfoque: 'Modelado Competitivo', estado: 'Pre-Competencia', color: 'text-purple-400' };
+    if (plan?.etapa === 'Competitiva') return { enfoque: 'Puesta a Punto (Tapering)', estado: 'PICO DE FORMA', color: 'text-rose-400' };
     return { enfoque: 'Recuperación Activa', estado: 'Transición', color: 'text-slate-400' };
-  }, [semanaNum, datosMacrociclo]);
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const datos = payload[0].payload;
-      const esActual = datos.semanaOriginal === semanaNum;
-      const esVidaReal = datos.semanaOriginal === semanaRealActual;
-
-      return (
-        <div className={`bg-white p-4 rounded-xl border shadow-xl ${esActual ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
-          <div className="font-black text-slate-800 mb-2 border-b border-slate-100 pb-2 flex flex-col gap-1">
-            <div className="flex justify-between items-center gap-4">
-              <span>Semana {datos.semanaOriginal}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest text-white" style={{ backgroundColor: datos.colorMicrociclo }}>
-                {datos.tipoMicrociclo}
-              </span>
-            </div>
-            {esActual && <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">👀 Visualizando Ahora</span>}
-            {esVidaReal && <span className="text-[10px] text-rose-500 font-bold uppercase tracking-widest flex items-center gap-1"><MapPin className="w-3 h-3"/> Semana Actual (Real)</span>}
-          </div>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 mb-1.5 last:mb-0">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide w-24">{entry.name}:</span>
-              <span className="text-sm font-black" style={{ color: entry.color }}>{entry.value}%</span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // 🔥 CUSTOM X-AXIS TICK PARA DIBUJAR LOS COLORES DE LOS MICROCICLOS 🔥
-  const CustomTick = (props: any) => {
-    const { x, y, payload } = props;
-    const dato = datosMacrociclo.find(d => d.name === payload.value);
-    if (!dato) return null;
-
-    const esSeleccionada = dato.semanaOriginal === semanaNum;
-
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <text x={0} y={0} dy={16} textAnchor="middle" fill={esSeleccionada ? '#4f46e5' : '#94a3b8'} fontSize={10} fontWeight={esSeleccionada ? 900 : 700}>
-          {payload.value}
-        </text>
-        <circle cx={0} cy={26} r={4} fill={dato.colorMicrociclo} stroke="#fff" strokeWidth={1} />
-      </g>
-    );
-  };
+  }, [semanaNum, datosMacrociclo, configuracion]);
 
   return (
     <div className="bg-white p-4 md:p-6 lg:p-8 rounded-3xl border border-slate-200 shadow-sm mb-8 relative overflow-hidden print:hidden w-full">
@@ -174,11 +180,11 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo }: GraficosCa
             <ComposedChart data={datosMacrociclo} margin={{ top: 20, right: 10, bottom: 30, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               
-              <XAxis dataKey="name" tick={<CustomTick />} tickLine={false} axisLine={false} />
+              <XAxis dataKey="name" tick={<CustomTick datosMacrociclo={datosMacrociclo} semanaNum={semanaNum} />} tickLine={false} axisLine={false} />
               
               <YAxis tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
               
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9', opacity: 0.5 }} />
+              <Tooltip content={<CustomTooltip semanaNum={semanaNum} semanaRealActual={semanaRealActual} />} cursor={{ fill: '#f1f5f9', opacity: 0.5 }} />
               
               <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 700, color: '#475569' }} />
 

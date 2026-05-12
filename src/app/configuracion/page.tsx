@@ -1,14 +1,27 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore'
-import { Users, PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2 } from 'lucide-react'
-import GestorInventario from '../../components/dashboard/GestorInventario' // 🔥 IMPORTAMOS EL GESTOR DE INVENTARIO
+import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2 } from 'lucide-react'
+import GestorInventario from '../../components/dashboard/GestorInventario' 
+import type { Grupo } from '../../lib/types'
+
+type CompetenciaSecundaria = { nombre: string; fecha: string }
+type DiaHorario = { dia: string; enfoque: string; aparatos: string; lugar: string; hora: string }
+
+const HORARIO_BASE: DiaHorario[] = [
+  { dia: 'Lunes', enfoque: 'Prep. Física Gral + Salto y Barras', aparatos: 'Salto, Barras', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
+  { dia: 'Martes', enfoque: 'Flexibilidad + Viga y Suelo', aparatos: 'Viga, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
+  { dia: 'Miércoles', enfoque: 'Coreografía, Ballet y Prevención', aparatos: 'Suelo, Danza', lugar: 'Salón de Danza', hora: '4:00 PM - 6:00 PM' },
+  { dia: 'Jueves', enfoque: 'Física Especial + Salto y Viga', aparatos: 'Salto, Viga', lugar: 'Pista Atlética / Gimnasio', hora: '4:00 PM - 7:00 PM' },
+  { dia: 'Viernes', enfoque: 'Barras, Suelo y Acrobacia', aparatos: 'Barras, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
+  { dia: 'Sábado', enfoque: 'Control Técnico y Repaso Rutinas', aparatos: 'Todos', lugar: 'Gimnasio Principal', hora: '8:00 AM - 12:00 PM' }
+]
 
 export default function ConfiguracionGeneral() {
   const { clubId, nombreClub, logoUrl, setClubData } = useClubStore() 
-  const [grupos, setGrupos] = useState<any[]>([])
+  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [cargandoGrupos, setCargandoGrupos] = useState(true)
   const [notificacion, setNotificacion] = useState({ mostrar: false, mensaje: '', tipo: '' })
   
@@ -17,7 +30,7 @@ export default function ConfiguracionGeneral() {
   // ==========================================
   const [nuevoNombreClub, setNuevoNombreClub] = useState('')
   const [nuevoLogoClub, setNuevoLogoClub] = useState('')
-  const [archivoLogo, setArchivoLogo] = useState<File | null>(null) // Para subir a Supabase
+  const [archivoLogo, setArchivoLogo] = useState<File | null>(null)
   const [guardandoClub, setGuardandoClub] = useState(false)
 
   useEffect(() => {
@@ -40,40 +53,34 @@ export default function ConfiguracionGeneral() {
   const [guardandoConfig, setGuardandoConfig] = useState(false)
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaCompetencia, setFechaCompetencia] = useState('')
+  // 🔥 NUEVO: Estado para las competencias preparatorias
+  const [competenciasSecundarias, setCompetenciasSecundarias] = useState<CompetenciaSecundaria[]>([])
   const [calculo, setCalculo] = useState({ totales: 0, preparatorio: 0, competitivo: 0, general: 0, especial: 0 })
 
-  const horarioBase = [
-    { dia: 'Lunes', enfoque: 'Prep. Física Gral + Salto y Barras', aparatos: 'Salto, Barras', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
-    { dia: 'Martes', enfoque: 'Flexibilidad + Viga y Suelo', aparatos: 'Viga, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
-    { dia: 'Miércoles', enfoque: 'Coreografía, Ballet y Prevención', aparatos: 'Suelo, Danza', lugar: 'Salón de Danza', hora: '4:00 PM - 6:00 PM' },
-    { dia: 'Jueves', enfoque: 'Física Especial + Salto y Viga', aparatos: 'Salto, Viga', lugar: 'Pista Atlética / Gimnasio', hora: '4:00 PM - 7:00 PM' },
-    { dia: 'Viernes', enfoque: 'Barras, Suelo y Acrobacia', aparatos: 'Barras, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
-    { dia: 'Sábado', enfoque: 'Control Técnico y Repaso Rutinas', aparatos: 'Todos', lugar: 'Gimnasio Principal', hora: '8:00 AM - 12:00 PM' }
-  ]
-  const [horario, setHorario] = useState(horarioBase)
+  const [horario, setHorario] = useState(HORARIO_BASE)
 
-  useEffect(() => {
-    if (clubId) cargarGrupos()
-  }, [clubId])
-
-  const cargarGrupos = async () => {
+  const cargarGrupos = useCallback(async () => {
+    if (!clubId) return
     setCargandoGrupos(true)
     const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId).order('nivel', { ascending: true })
-    setGrupos(data || [])
+    setGrupos((data || []) as Grupo[])
     setCargandoGrupos(false)
-  }
+  }, [clubId])
+
+  useEffect(() => {
+    if (clubId) void cargarGrupos()
+  }, [clubId, cargarGrupos])
 
   const mostrarToast = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
     setTimeout(() => setNotificacion({ mostrar: false, mensaje: '', tipo: '' }), 3500)
   }
 
-  // --- LÓGICA DEL CLUB: GUARDAR LOGO REAL ---
   const handleSimularSubidaLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setArchivoLogo(file) // Guardamos el archivo real para subirlo
-      setNuevoLogoClub(URL.createObjectURL(file)) // Vista previa inmediata
+      setArchivoLogo(file)
+      setNuevoLogoClub(URL.createObjectURL(file))
     }
   }
 
@@ -85,13 +92,11 @@ export default function ConfiguracionGeneral() {
     try {
       let finalLogoUrl = nuevoLogoClub
 
-      // Si hay un archivo nuevo, lo subimos a Supabase Storage
       if (archivoLogo) {
         const fileExt = archivoLogo.name.split('.').pop()
         const fileName = `${clubId}-${Math.random()}.${fileExt}`
         const filePath = `logos/${fileName}`
 
-        // 🔥 Asegúrate de tener un bucket llamado 'logos' en Supabase
         const { error: uploadError } = await supabase.storage.from('logos').upload(filePath, archivoLogo)
         if (uploadError) throw uploadError
 
@@ -99,12 +104,11 @@ export default function ConfiguracionGeneral() {
         finalLogoUrl = publicUrl
       }
 
-      // Actualizamos la base de datos con el nuevo nombre y la URL final del logo
       const { error } = await supabase.from('clubs').update({ nombre: nuevoNombreClub, logo_url: finalLogoUrl }).eq('id', clubId)
       if (error) throw error
 
       setClubData({ nombreClub: nuevoNombreClub, logoUrl: finalLogoUrl })
-      setArchivoLogo(null) // Limpiamos el archivo pendiente
+      setArchivoLogo(null)
       mostrarToast('Perfil y Logo del club actualizados', 'exito')
     } catch (error) {
       console.error(error)
@@ -114,7 +118,6 @@ export default function ConfiguracionGeneral() {
     }
   }
 
-  // --- LÓGICA DE EQUIPOS ---
   const crearGrupo = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!clubId) return mostrarToast('Error: No se ha detectado el club activo', 'error')
@@ -125,7 +128,7 @@ export default function ConfiguracionGeneral() {
       if (error) throw error
       mostrarToast('Equipo creado exitosamente', 'exito')
       setNuevoGrupo({ nombre: '', nivel: 'Nivel 1' })
-      cargarGrupos()
+      void cargarGrupos()
     } catch (error) {
       console.error(error)
       mostrarToast('Error al crear el equipo', 'error')
@@ -137,19 +140,18 @@ export default function ConfiguracionGeneral() {
   const confirmarEliminacion = async () => {
     if (!modalEliminar) return
     try {
-      const { error } = await supabase.from('grupos').delete().eq('id', modalEliminar.id)
+      const { error } = await supabase.from('grupos').delete().eq('id', modalEliminar.id).eq('club_id', clubId)
       if (error) throw error
       mostrarToast('Equipo eliminado del sistema', 'exito')
       setModalEliminar(null)
       if (grupoActivo === modalEliminar.id) setGrupoActivo('')
-      cargarGrupos()
+      void cargarGrupos()
     } catch (error) {
       console.error(error)
       mostrarToast('Error al eliminar el equipo', 'error')
     }
   }
 
-  // --- LÓGICA DE TEMPORADA ---
   useEffect(() => {
     if (!grupoActivo) return
     const cargarConfig = async () => {
@@ -157,16 +159,18 @@ export default function ConfiguracionGeneral() {
       if (data) {
         if (data.fecha_inicio) setFechaInicio(data.fecha_inicio)
         if (data.fecha_competencia) setFechaCompetencia(data.fecha_competencia)
-        if (data.horario_semanal) setHorario(data.horario_semanal)
+        if (Array.isArray(data.horario_semanal)) setHorario(data.horario_semanal as DiaHorario[])
+        // 🔥 NUEVO: Cargar competencias secundarias
+        if (Array.isArray(data.competencias_secundarias)) setCompetenciasSecundarias(data.competencias_secundarias as CompetenciaSecundaria[])
       } else {
         setFechaInicio('')
         setFechaCompetencia('')
-        setHorario(horarioBase)
+        setHorario(HORARIO_BASE)
+        setCompetenciasSecundarias([]) // 🔥 NUEVO: Reiniciar si no hay data
         setCalculo({ totales: 0, preparatorio: 0, competitivo: 0, general: 0, especial: 0 })
       }
     }
     cargarConfig()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupoActivo])
 
   useEffect(() => {
@@ -187,7 +191,7 @@ export default function ConfiguracionGeneral() {
     }
   }, [fechaInicio, fechaCompetencia])
 
-  const manejarCambioHorario = (index: number, campo: string, valor: string) => {
+  const manejarCambioHorario = (index: number, campo: keyof DiaHorario, valor: string) => {
     const nuevoHorario = [...horario]
     nuevoHorario[index] = { ...nuevoHorario[index], [campo]: valor }
     setHorario(nuevoHorario)
@@ -201,6 +205,7 @@ export default function ConfiguracionGeneral() {
         grupo_id: grupoActivo,
         fecha_inicio: fechaInicio,
         fecha_competencia: fechaCompetencia,
+        competencias_secundarias: competenciasSecundarias, // 🔥 NUEVO: Guardar en DB
         semanas_totales: calculo.totales,
         semanas_preparatorio: calculo.preparatorio,
         semanas_competitivo: calculo.competitivo,
@@ -239,7 +244,7 @@ export default function ConfiguracionGeneral() {
                 <AlertTriangle className="w-10 h-10 text-rose-500" />
               </div>
               <h3 className="text-xl font-black text-slate-800 mb-2">¿Eliminar Equipo?</h3>
-              <p className="text-slate-500 text-sm mb-6">Estás a punto de borrar <strong>"{modalEliminar.nombre}"</strong>.</p>
+              <p className="text-slate-500 text-sm mb-6">Estás a punto de borrar <strong>&quot;{modalEliminar.nombre}&quot;</strong>.</p>
               <div className="flex w-full gap-3">
                 <button onClick={() => setModalEliminar(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Cancelar</button>
                 <button onClick={confirmarEliminacion} className="flex-1 py-3 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md transition-colors">Sí, Eliminar</button>
@@ -256,9 +261,6 @@ export default function ConfiguracionGeneral() {
         <p className="text-slate-500 mt-2 font-medium">Gestión de identidad, equipos, macrociclos, horarios de entrenamiento e inventario de implementación.</p>
       </div>
 
-      {/* =========================================================================
-          SECCIÓN 1: PERFIL DEL CLUB E INVENTARIO (GLOBAL)
-          ========================================================================= */}
       <div className="mb-12">
         <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
           <Building2 className="w-6 h-6 text-slate-400"/> 1. Perfil del Club e Inventario
@@ -286,7 +288,6 @@ export default function ConfiguracionGeneral() {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Nombre Oficial del Club</label>
                 <input required type="text" value={nuevoNombreClub} onChange={(e) => setNuevoNombreClub(e.target.value)} placeholder="Ej. G.A. Estrella" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-lg" />
               </div>
-              {/* 🔥 BOTÓN ARREGLADO CON bg-indigo-600 PARA QUE EL TEXTO BLANCO SE VEA */}
               <button type="submit" disabled={guardandoClub} className={`mt-2 w-full md:w-auto self-start px-8 py-3.5 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-md ${guardandoClub ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                 {guardandoClub ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5"/> Guardar Perfil</>}
               </button>
@@ -294,13 +295,9 @@ export default function ConfiguracionGeneral() {
           </div>
         </form>
 
-        {/* 🔥 GESTOR DE INVENTARIO A NIVEL CLUB (GLOBAL) */}
         <GestorInventario grupoId={clubId} />
       </div>
 
-      {/* =========================================================================
-          SECCIÓN 2: GESTOR DE EQUIPOS
-          ========================================================================= */}
       <div className="mb-12 border-t border-slate-200 pt-8">
         <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2"><Shield className="w-6 h-6 text-slate-400"/> 2. Gestión de Equipos</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -351,9 +348,6 @@ export default function ConfiguracionGeneral() {
         </div>
       </div>
 
-      {/* =========================================================================
-          SECCIÓN 3: CONFIGURACIÓN DE TEMPORADA Y HORARIOS
-          ========================================================================= */}
       <div className="mb-12 border-t border-slate-200 pt-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><CalendarDays className="w-6 h-6 text-slate-400"/> 3. Temporada y Horarios</h2>
@@ -384,6 +378,64 @@ export default function ConfiguracionGeneral() {
                   <label className="block text-[10px] font-black text-rose-600 uppercase mb-1">Competencia Fundamental</label>
                   <input type="date" value={fechaCompetencia} onChange={(e) => setFechaCompetencia(e.target.value)} className="w-full p-3 bg-rose-50 border border-rose-200 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 text-rose-700 font-bold" />
                 </div>
+
+                {/* 🔥 NUEVO: SECCIÓN DE COMPETENCIAS SECUNDARIAS */}
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Torneos Preparatorios</label>
+                    <button
+                      onClick={() => setCompetenciasSecundarias([...competenciasSecundarias, { nombre: '', fecha: '' }])}
+                      type="button"
+                      className="text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1"
+                    >
+                      <PlusCircle className="w-3 h-3" /> Añadir
+                    </button>
+                  </div>
+
+                  {competenciasSecundarias.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No hay torneos de fogueo programados.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {competenciasSecundarias.map((comp, index) => (
+                        <div key={index} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-100 relative group transition-all">
+                          <input
+                            type="text"
+                            placeholder="Ej: Copa Amistad..."
+                            value={comp.nombre}
+                            onChange={(e) => {
+                              const nuevas = [...competenciasSecundarias]
+                              nuevas[index].nombre = e.target.value
+                              setCompetenciasSecundarias(nuevas)
+                            }}
+                            className="w-1/2 p-2 bg-transparent outline-none text-xs font-bold text-slate-700 border-b border-transparent focus:border-indigo-300"
+                          />
+                          <input
+                            type="date"
+                            value={comp.fecha}
+                            onChange={(e) => {
+                              const nuevas = [...competenciasSecundarias]
+                              nuevas[index].fecha = e.target.value
+                              setCompetenciasSecundarias(nuevas)
+                            }}
+                            className="w-1/2 p-2 bg-transparent outline-none text-xs text-slate-500 font-medium cursor-pointer"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nuevas = competenciasSecundarias.filter((_, i) => i !== index)
+                              setCompetenciasSecundarias(nuevas)
+                            }}
+                            className="absolute -right-2 -top-2 bg-rose-100 text-rose-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500 hover:text-white shadow-sm"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* 🔥 FIN NUEVO */}
+
               </div>
 
               <div className="bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-800 text-white">

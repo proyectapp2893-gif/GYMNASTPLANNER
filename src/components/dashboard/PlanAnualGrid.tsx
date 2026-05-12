@@ -1,57 +1,50 @@
 "use client"
 
-import { useState, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Settings2, MapPin, CalendarDays } from 'lucide-react'
+import { useState, useMemo, type Dispatch, type SetStateAction } from 'react'
+import { ChevronDown, ChevronRight, Settings2, CalendarDays } from 'lucide-react'
+import { buildPlanningModel, calculateCurrentWeek, getWeekPlan, MICRO_CYCLE_STYLE, type PlanningConfig } from '../../lib/sports-planning'
 
-export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, semanaSeleccionada }: any) {
+type TituloFilaProps = {
+  titulo: string
+  estado: boolean
+  setEstado: Dispatch<SetStateAction<boolean>>
+}
+
+type PlanAnualGridProps = {
+  configuracion: PlanningConfig
+  onSeleccionarSemana?: (semana: number, objetivo: string) => void
+  semanaSeleccionada?: number
+}
+
+function TituloFila({ titulo, estado, setEstado }: TituloFilaProps) {
+  return (
+    <div onClick={() => setEstado(!estado)} className="w-36 flex-shrink-0 text-xs font-bold text-slate-700 flex items-center cursor-pointer hover:text-indigo-600 bg-slate-50 border-r border-slate-200 p-1 transition-colors select-none">
+      {estado ? <ChevronDown className="w-4 h-4 mr-1 text-slate-400"/> : <ChevronRight className="w-4 h-4 mr-1 text-slate-400"/>}
+      {titulo}
+    </div>
+  )
+}
+
+export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, semanaSeleccionada }: PlanAnualGridProps) {
   const [verPeriodos, setVerPeriodos] = useState(true)
   const [verEtapas, setVerEtapas] = useState(true)
   const [verMesociclos, setVerMesociclos] = useState(true)
   const [verMicrociclos, setVerMicrociclos] = useState(true)
 
-  // 🔥 LÓGICA DINÁMICA CORREGIDA: Sincronizada de Lunes a Lunes
   const semanaRealActual = useMemo(() => {
-    if (!configuracion || !configuracion.fecha_inicio) return 1;
-
-    const hoy = new Date();
-    hoy.setHours(12, 0, 0, 0);
-
-    const inicio = new Date(configuracion.fecha_inicio + 'T12:00:00');
-
-    // 1. Encontrar el Lunes de la semana en que inició el Macrociclo
-    const diaInicio = inicio.getDay();
-    const restarInicio = diaInicio === 0 ? 6 : diaInicio - 1; // 0 es Domingo
-    const lunesInicio = new Date(inicio);
-    lunesInicio.setDate(inicio.getDate() - restarInicio);
-
-    // 2. Encontrar el Lunes de la semana actual (Hoy)
-    const diaHoy = hoy.getDay();
-    const restarHoy = diaHoy === 0 ? 6 : diaHoy - 1;
-    const lunesHoy = new Date(hoy);
-    lunesHoy.setDate(hoy.getDate() - restarHoy);
-
-    // 3. Diferencia exacta en días entre ambos Lunes
-    const diffTime = lunesHoy.getTime() - lunesInicio.getTime();
-    // Usamos Math.round para evitar bugs con el cambio de horario de verano (Daylight Saving Time)
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)); 
-
-    const semanaCalculada = Math.floor(diffDays / 7) + 1;
-
-    if (semanaCalculada < 1) return 1;
-    if (semanaCalculada > configuracion.semanas_totales) return configuracion.semanas_totales;
-
-    return semanaCalculada;
+    return calculateCurrentWeek(configuracion)
   }, [configuracion]);
 
   const { semanas, meses } = useMemo(() => {
-    if (!configuracion || configuracion.semanas_totales <= 0) return { semanas: [], meses: [] }
+    const totalSemanas = Math.max(0, Number(configuracion?.semanas_totales || 0))
+    if (!configuracion || totalSemanas <= 0 || !configuracion.fecha_inicio) return { semanas: [] as number[], meses: [] }
     
-    const sems = Array.from({ length: configuracion.semanas_totales }, (_, i) => i + 1)
+    const sems = Array.from({ length: totalSemanas }, (_, i) => i + 1)
     const arrMeses: { nombre: string; span: number }[] = []
     
-    let fechaActual = new Date(configuracion.fecha_inicio + 'T12:00:00') 
+    const fechaActual = new Date(configuracion.fecha_inicio + 'T12:00:00') 
     
-    for (let i = 0; i < configuracion.semanas_totales; i++) {
+    for (let i = 0; i < totalSemanas; i++) {
       const nombreMes = fechaActual.toLocaleString('es-ES', { month: 'short' })
       const lastMes = arrMeses[arrMeses.length - 1]
       if (lastMes && lastMes.nombre === nombreMes) {
@@ -64,29 +57,30 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
     return { semanas: sems, meses: arrMeses }
   }, [configuracion])
 
-  if (!configuracion || configuracion.semanas_totales <= 0) return null
+  if (!configuracion || Number(configuracion.semanas_totales || 0) <= 0) return null
 
-  const total = configuracion.semanas_totales || 1 
-  const anchoPrep = (configuracion.semanas_preparatorio / total) * 100
-  const anchoComp = (configuracion.semanas_competitivo / total) * 100
+  const planningModel = buildPlanningModel(configuracion)
+  const total = planningModel.total
+  const anchoPrep = (planningModel.preparatorio / total) * 100
+  const anchoComp = (planningModel.competitivo / total) * 100
   
-  const semGral = Math.round(configuracion.semanas_preparatorio * 0.6)
-  const semEsp = configuracion.semanas_preparatorio - semGral
-  const semPreComp = Math.round(configuracion.semanas_competitivo * 0.5)
-  const semComp = configuracion.semanas_competitivo - semPreComp
+  const semGral = planningModel.general
+  const semEsp = planningModel.especial
+  const semPreComp = planningModel.precompetitivo
+  const semComp = planningModel.competitivoPico
 
   const anchoGral = (semGral / total) * 100
   const anchoEsp = (semEsp / total) * 100
   const anchoPreComp = (semPreComp / total) * 100
   const anchoCompFase = (semComp / total) * 100
 
-  const semEntrante = Math.max(1, Math.round(semGral * 0.3))
-  const semBasicoDes = semGral - semEntrante
-  const semBasicoEst = Math.max(1, Math.round(semEsp * 0.6))
-  const semControl = semEsp - semBasicoEst
-  const semPulimiento = semPreComp
-  const semCompetitivoMeso = Math.max(1, Math.round(semComp * 0.7))
-  const semRestablecimiento = semComp - semCompetitivoMeso
+  const semEntrante = planningModel.entrante
+  const semBasicoDes = planningModel.basicoDesarrollador
+  const semBasicoEst = planningModel.basicoEstabilizador
+  const semControl = planningModel.control
+  const semPulimiento = planningModel.pulimiento
+  const semCompetitivoMeso = planningModel.competitivoMeso
+  const semRestablecimiento = planningModel.restablecimiento
 
   const wEntrante = (semEntrante / total) * 100
   const wBasicoDes = (semBasicoDes / total) * 100
@@ -98,26 +92,8 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
 
   const manejarClicSemana = (semana: number) => {
     if (!onSeleccionarSemana) return
-    let objetivo = 'Preparación General'
-    let mesocicloNombre = 'Entrante'
-
-    if (semana <= semEntrante) { objetivo = 'Preparación General'; mesocicloNombre = 'Entrante' }
-    else if (semana <= semGral) { objetivo = 'Preparación General'; mesocicloNombre = 'Básico Desarrollador' }
-    else if (semana <= semGral + semBasicoEst) { objetivo = 'Preparación Especial'; mesocicloNombre = 'Básico Estabilizador' }
-    else if (semana <= semGral + semEsp) { objetivo = 'Preparación Especial'; mesocicloNombre = 'Control y Prep.' }
-    else if (semana <= semGral + semEsp + semPreComp) { objetivo = 'Pre-Competitiva'; mesocicloNombre = 'Pulimiento' }
-    else if (semana <= total - semRestablecimiento) { objetivo = 'Competitiva'; mesocicloNombre = 'Competitivo' }
-    else { objetivo = 'Competitiva'; mesocicloNombre = 'Restablecimiento' }
-
-    onSeleccionarSemana(semana, `${objetivo} (${mesocicloNombre})`)
+    onSeleccionarSemana(semana, getWeekPlan(configuracion, semana).objetivo)
   }
-
-  const TituloFila = ({ titulo, estado, setEstado }: any) => (
-    <div onClick={() => setEstado(!estado)} className="w-36 flex-shrink-0 text-xs font-bold text-slate-700 flex items-center cursor-pointer hover:text-indigo-600 bg-slate-50 border-r border-slate-200 p-1 transition-colors select-none">
-      {estado ? <ChevronDown className="w-4 h-4 mr-1 text-slate-400"/> : <ChevronRight className="w-4 h-4 mr-1 text-slate-400"/>}
-      {titulo}
-    </div>
-  )
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 font-sans overflow-hidden mb-8 print:hidden">
@@ -206,22 +182,9 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
             {verMicrociclos && (
               <div className="flex-1 flex gap-[2px] p-1 relative overflow-visible">
                 {semanas.map((semana) => {
-                  let bgColor = 'bg-[#34d399]' // Verde Ajuste
-                  let tipo = 'A' 
-
-                  if (semana % 4 === 0) { 
-                    bgColor = 'bg-[#60a5fa]'; // Azul Recuperación
-                    tipo = 'R'; 
-                  } else if (semana > semGral + semEsp) {
-                    bgColor = 'bg-[#a78bfa]'; // Morado Aproximación
-                    tipo = 'AP';
-                  } else if (semana % 3 === 0) {
-                    bgColor = 'bg-[#f43f5e]'; // Rojo Choque
-                    tipo = 'CH';
-                  } else {
-                    bgColor = 'bg-[#fbbf24]'; // Amarillo Carga
-                    tipo = 'C';
-                  }
+                  const planSemana = getWeekPlan(configuracion, semana)
+                  const bgColor = MICRO_CYCLE_STYLE[planSemana.microciclo].color
+                  const tipo = planSemana.microciclo
 
                   const isSeleccionada = semanaSeleccionada === semana;
                   const esLaVidaReal = semana === semanaRealActual;

@@ -1,31 +1,50 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Trophy, Medal, Search, Award, Loader2, RefreshCw, Filter, Activity } from 'lucide-react'
 import { useClubStore } from '../../../store/useClubStore'
 import { supabase } from '../../lib/supabase'
+import type { Competencia, Puntuacion } from '../../lib/types'
+
+const LISTA_APARATOS = ['Salto', 'Barras', 'Viga', 'Suelo'] as const
+type AparatoRanking = typeof LISTA_APARATOS[number]
+type FiltroAparato = AparatoRanking | 'All-Around'
+
+interface AtletaRankingInfo {
+  nombre: string
+  nivel: string
+}
+
+interface ResultadoRanking {
+  id: string
+  nombre: string
+  nivel: string
+  totalAA: number
+  notas: Record<AparatoRanking, number>
+}
 
 export default function RankingEnVivo() {
   const { clubId, nombreClub } = useClubStore()
   const [cargando, setCargando] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [nivelFiltro, setNivelFiltro] = useState('Todos')
-  const [aparatoFiltro, setAparatoFiltro] = useState('All-Around') // 🔥 NUEVO FILTRO POR APARATO
+  const [aparatoFiltro, setAparatoFiltro] = useState<FiltroAparato>('All-Around') // 🔥 NUEVO FILTRO POR APARATO
 
-  const [competencias, setCompetencias] = useState<any[]>([])
+  const [competencias, setCompetencias] = useState<Competencia[]>([])
   const [competenciaActiva, setCompetenciaActiva] = useState<string>('')
-  const [resultados, setResultados] = useState<any[]>([])
+  const [resultados, setResultados] = useState<ResultadoRanking[]>([])
   const [nivelesDisponibles, setNivelesDisponibles] = useState<string[]>([])
 
-  const listaAparatos = ['Salto', 'Barras', 'Viga', 'Suelo']
+  const listaAparatos = LISTA_APARATOS
 
   useEffect(() => {
     const cargarCompetencias = async () => {
       if (!clubId) return
       const { data } = await supabase.from('competencias').select('*').eq('club_id', clubId).order('fecha', { ascending: false })
-      if (data && data.length > 0) {
-        setCompetencias(data)
-        setCompetenciaActiva(data[0].id) 
+      const competenciasClub = (data || []) as Competencia[]
+      if (competenciasClub.length > 0) {
+        setCompetencias(competenciasClub)
+        setCompetenciaActiva(competenciasClub[0].id) 
       } else {
         setCargando(false)
       }
@@ -33,12 +52,8 @@ export default function RankingEnVivo() {
     cargarCompetencias()
   }, [clubId])
 
-  useEffect(() => {
-    if (competenciaActiva) cargarResultados()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competenciaActiva])
-
-  const cargarResultados = async () => {
+  const cargarResultados = useCallback(async () => {
+    if (!clubId || !competenciaActiva) return
     setCargando(true)
     try {
       // 🔥 AHORA TAMBIÉN PEDIMOS EL APARATO
@@ -50,29 +65,31 @@ export default function RankingEnVivo() {
       if (errPuntuaciones) throw errPuntuaciones
 
       if (puntuaciones && puntuaciones.length > 0) {
-        const idsAtletas = [...new Set(puntuaciones.map(p => p.atleta_id).filter(Boolean))]
+        const puntuacionesCompetencia = puntuaciones as Puntuacion[]
+        const idsAtletas = [...new Set(puntuacionesCompetencia.map(p => p.atleta_id).filter(Boolean))]
 
         const { data: atletas, error: errAtletas } = await supabase
           .from('atletas')
           .select('id, nombre, grupo_id')
+          .eq('club_id', clubId)
           .in('id', idsAtletas)
 
         if (errAtletas) throw errAtletas
 
         const idsGrupos = [...new Set(atletas?.map(a => a.grupo_id).filter(Boolean))]
-        let infoGrupos: Record<string, string> = {}
+        const infoGrupos: Record<string, string> = {}
         
         if (idsGrupos.length > 0) {
-          const { data: grupos } = await supabase.from('grupos').select('id, nivel').in('id', idsGrupos)
+          const { data: grupos } = await supabase.from('grupos').select('id, nivel').eq('club_id', clubId).in('id', idsGrupos)
           if (grupos) grupos.forEach(g => { infoGrupos[g.id] = g.nivel })
         }
 
-        const diccionarioAtletas: Record<string, any> = {}
+        const diccionarioAtletas: Record<string, AtletaRankingInfo> = {}
         const nivelesSet = new Set<string>()
 
         if (atletas) {
           atletas.forEach(a => {
-            const nivelReal = infoGrupos[a.grupo_id] || 'General'
+            const nivelReal = a.grupo_id ? infoGrupos[a.grupo_id] || 'General' : 'General'
             diccionarioAtletas[a.id] = { nombre: a.nombre, nivel: nivelReal }
             nivelesSet.add(nivelReal)
           })
@@ -81,9 +98,9 @@ export default function RankingEnVivo() {
         setNivelesDisponibles(nivelesSet.size > 0 ? Array.from(nivelesSet) : ['General'])
 
         // 🔥 NUEVA LÓGICA: GUARDAMOS NOTAS INDIVIDUALES POR APARATO
-        const acumuladoPorAtleta: Record<string, any> = {}
+        const acumuladoPorAtleta: Record<string, ResultadoRanking> = {}
 
-        puntuaciones.forEach((p: any) => {
+        puntuacionesCompetencia.forEach((p) => {
           const idAtleta = p.atleta_id
           if (!idAtleta) return 
 
@@ -101,8 +118,8 @@ export default function RankingEnVivo() {
           
           const nota = Number(p.nota_final) || 0
           acumuladoPorAtleta[idAtleta].totalAA += nota
-          if (p.aparato && acumuladoPorAtleta[idAtleta].notas[p.aparato] !== undefined) {
-            acumuladoPorAtleta[idAtleta].notas[p.aparato] = nota
+          if (LISTA_APARATOS.includes(p.aparato as AparatoRanking)) {
+            acumuladoPorAtleta[idAtleta].notas[p.aparato as AparatoRanking] = nota
           }
         })
 
@@ -111,25 +128,29 @@ export default function RankingEnVivo() {
          setResultados([])
          setNivelesDisponibles([])
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ Error al calcular:", error)
       setResultados([])
     } finally {
       setCargando(false)
     }
-  }
+  }, [clubId, competenciaActiva])
+
+  useEffect(() => {
+    if (competenciaActiva) void cargarResultados()
+  }, [competenciaActiva, cargarResultados])
 
   // 🔥 OBTENER PUNTAJE DINÁMICO (Dependiendo del filtro)
-  const getPuntaje = (gimnasta: any) => {
+  const getPuntaje = useCallback((gimnasta: ResultadoRanking) => {
     if (aparatoFiltro === 'All-Around') return gimnasta.totalAA
     return gimnasta.notas[aparatoFiltro]
-  }
+  }, [aparatoFiltro])
 
   // 🔥 LÓGICA DE FILTRADO Y ORDENAMIENTO DINÁMICO
-  const rankingFiltrado = [...resultados]
+  const rankingFiltrado = useMemo(() => [...resultados]
     .filter(r => (nivelFiltro === 'Todos' || r.nivel === nivelFiltro))
     .filter(r => r.nombre.toLowerCase().includes(busqueda.toLowerCase()))
-    .sort((a, b) => getPuntaje(b) - getPuntaje(a)) // Ordena basado en lo que el usuario quiere ver
+    .sort((a, b) => getPuntaje(b) - getPuntaje(a)), [busqueda, getPuntaje, nivelFiltro, resultados]) // Ordena basado en lo que el usuario quiere ver
 
   const podio = rankingFiltrado.slice(0, 3)
 
@@ -247,7 +268,7 @@ export default function RankingEnVivo() {
               {/* FILTRO: APARATO */}
               <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg flex-1 sm:flex-none">
                 <Activity className="w-3.5 h-3.5 text-rose-400" />
-                <select value={aparatoFiltro} onChange={(e) => setAparatoFiltro(e.target.value)} className="bg-transparent text-xs md:text-sm font-bold text-rose-600 outline-none cursor-pointer w-full">
+                <select value={aparatoFiltro} onChange={(e) => setAparatoFiltro(e.target.value as FiltroAparato)} className="bg-transparent text-xs md:text-sm font-bold text-rose-600 outline-none cursor-pointer w-full">
                   <option value="All-Around">All-Around (AA)</option>
                   {listaAparatos.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>

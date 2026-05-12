@@ -1,15 +1,19 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
 import { Users, UserPlus, Save, Trash2, Search, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import type { Atleta, Grupo } from '../../lib/types'
+
+type GrupoResumen = Pick<Grupo, 'nombre' | 'nivel'>
+type AtletaConGrupo = Atleta & { grupos?: GrupoResumen | GrupoResumen[] | null }
 
 export default function Atletas() {
   const { clubId } = useClubStore() 
 
-  const [grupos, setGrupos] = useState<any[]>([])
-  const [atletas, setAtletas] = useState<any[]>([])
+  const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [atletas, setAtletas] = useState<AtletaConGrupo[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -22,14 +26,7 @@ export default function Atletas() {
   const [notificacion, setNotificacion] = useState({ mostrar: false, mensaje: '', tipo: '' })
   const [modalEliminar, setModalEliminar] = useState<{ id: string, nombre: string } | null>(null)
 
-  useEffect(() => {
-    if (clubId) {
-      cargarDatos()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clubId])
-
-  const cargarDatos = async () => {
+  const cargarDatos = useCallback(async () => {
     if (!clubId) return; 
     
     setCargando(true)
@@ -37,8 +34,8 @@ export default function Atletas() {
       const { data: gruposData } = await supabase.from('grupos').select('*').eq('club_id', clubId)
       const { data: atletasData } = await supabase.from('atletas').select('*, grupos(nombre, nivel)').eq('club_id', clubId).order('nombre')
       
-      setGrupos(gruposData || [])
-      setAtletas(atletasData || [])
+      setGrupos((gruposData || []) as Grupo[])
+      setAtletas((atletasData || []) as AtletaConGrupo[])
     } catch (error) {
       console.error("Error cargando datos:", error)
       setGrupos([])
@@ -46,7 +43,13 @@ export default function Atletas() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [clubId])
+
+  useEffect(() => {
+    if (clubId) {
+      void cargarDatos()
+    }
+  }, [clubId, cargarDatos])
 
   // 🔥 NUEVO: Función para mostrar el Toast
   const mostrarToast = (mensaje: string, tipo: 'exito' | 'error') => {
@@ -66,7 +69,7 @@ export default function Atletas() {
       setNombre('')
       setFechaNacimiento('')
       setGrupoId('')
-      cargarDatos()
+      void cargarDatos()
       mostrarToast('¡Atleta inscrita con éxito!', 'exito') // 🔥 NUEVO: Usamos Toast
     } catch (error) {
       console.error(error)
@@ -80,10 +83,10 @@ export default function Atletas() {
   const confirmarEliminacion = async () => {
     if (!modalEliminar) return
     try {
-      await supabase.from('atletas').delete().eq('id', modalEliminar.id)
+      await supabase.from('atletas').delete().eq('id', modalEliminar.id).eq('club_id', clubId)
       mostrarToast('Atleta eliminada del directorio', 'exito')
       setModalEliminar(null)
-      cargarDatos()
+      void cargarDatos()
     } catch (error) {
       console.error(error)
       mostrarToast('Error al eliminar atleta', 'error')
@@ -93,7 +96,7 @@ export default function Atletas() {
   const atletasSeguros = atletas || []
   const atletasFiltradas = atletasSeguros.filter(a => a?.nombre?.toLowerCase().includes((busqueda || '').toLowerCase()))
 
-  const mostrarGrupo = (atleta: any) => {
+  const mostrarGrupo = (atleta: AtletaConGrupo): ReactNode => {
     if (!atleta?.grupos) {
       return <span className="bg-slate-100 text-slate-500 font-bold text-xs px-2 py-1 rounded-md border border-slate-200">Sin grupo</span>
     }

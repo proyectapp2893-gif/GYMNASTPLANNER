@@ -1,32 +1,38 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' // 🔥 NUEVO: Importamos nuestra memoria central
 import { ClipboardList, Filter, Save, Activity, Loader2, CheckCircle2, XCircle, History, PlusCircle, Calendar, TrendingUp, Trash2 } from 'lucide-react'
+import { analyzePhysicalTest, type RawPhysicalTestResults } from '../../lib/physical-tests'
+import type { Atleta, EvaluacionFisica, Grupo } from '../../lib/types'
+
+const RESULTADOS_INICIALES: RawPhysicalTestResults = {
+  dominadas: '', lagartijas: '', soga: '', 
+  piernas_flexionadas: '', piernas_extendidas: '', postura_ahuecada: '',
+  carrera_18m: '', vela_salto: '', split: '', hombros: '', arco: ''
+}
+
+const valorFormulario = (valor: RawPhysicalTestResults[string]) => valor ?? ''
 
 export default function TestFisicos() {
   const { clubId } = useClubStore() // 🔥 NUEVO: Extraemos el ID del club activo
 
-  const [grupos, setGrupos] = useState<any[]>([])
+  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [grupoSeleccionado, setGrupoSeleccionado] = useState('')
-  const [atletas, setAtletas] = useState<any[]>([])
+  const [atletas, setAtletas] = useState<Atleta[]>([])
   const [cargando, setCargando] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
   const [fechaTest, setFechaTest] = useState(new Date().toISOString().split('T')[0])
-  const [atletaSeleccionada, setAtletaSeleccionada] = useState<any>(null)
+  const [atletaSeleccionada, setAtletaSeleccionada] = useState<Atleta | null>(null)
   
-  const [historial, setHistorial] = useState<any[]>([])
+  const [historial, setHistorial] = useState<EvaluacionFisica[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
   const [vistaActiva, setVistaActiva] = useState<'nueva' | 'historial'>('nueva')
   const [notificacion, setNotificacion] = useState({ mostrar: false, mensaje: '', tipo: '' })
   
-  const [resultados, setResultados] = useState({
-    dominadas: '', lagartijas: '', soga: '', 
-    piernas_flexionadas: '', piernas_extendidas: '', postura_ahuecada: '',
-    carrera_18m: '', vela_salto: '', split: '', hombros: '', arco: ''
-  })
+  const [resultados, setResultados] = useState<RawPhysicalTestResults>(RESULTADOS_INICIALES)
 
   useEffect(() => {
     // 🔥 NUEVO: Solo cargamos datos si ya tenemos el clubId
@@ -35,50 +41,52 @@ export default function TestFisicos() {
     const cargarGrupos = async () => {
       // 🔥 NUEVO: Filtramos grupos por club_id
       const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId)
-      if (data) setGrupos(data)
+      if (data) setGrupos(data as Grupo[])
     }
     cargarGrupos()
   }, [clubId]) // 🔥 NUEVO: Dependencia actualizada
 
   useEffect(() => {
-    if (!grupoSeleccionado) return
+    if (!grupoSeleccionado || !clubId) return
     const cargarAtletas = async () => {
       setCargando(true)
       // Nota: Como los grupos ya están filtrados por clubId, 
       // los atletas de ese grupo pertenecen implícitamente a ese club.
-      const { data } = await supabase.from('atletas').select('*').eq('grupo_id', grupoSeleccionado).order('nombre')
-      setAtletas(data || [])
+      const { data } = await supabase.from('atletas').select('*').eq('grupo_id', grupoSeleccionado).eq('club_id', clubId).order('nombre')
+      setAtletas((data || []) as Atleta[])
       setAtletaSeleccionada(null)
       setCargando(false)
     }
     cargarAtletas()
-  }, [grupoSeleccionado])
+  }, [clubId, grupoSeleccionado])
 
-  useEffect(() => {
-    if (atletaSeleccionada) {
-      cargarHistorial(atletaSeleccionada.id)
-      setVistaActiva('nueva')
-    }
-  }, [atletaSeleccionada])
-
-  const cargarHistorial = async (atletaId: string) => {
+  const cargarHistorial = useCallback(async (atletaId: string) => {
+    if (!clubId) return
     setCargandoHistorial(true)
     const { data } = await supabase
       .from('evaluaciones_fisicas')
       .select('*')
       .eq('atleta_id', atletaId)
+      .eq('club_id', clubId)
       .order('fecha', { ascending: false })
     
-    setHistorial(data || [])
+    setHistorial((data || []) as EvaluacionFisica[])
     setCargandoHistorial(false)
-  }
+  }, [clubId])
+
+  useEffect(() => {
+    if (atletaSeleccionada) {
+      void cargarHistorial(atletaSeleccionada.id)
+      setVistaActiva('nueva')
+    }
+  }, [atletaSeleccionada, cargarHistorial])
 
   const mostrarNotificacion = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
     setTimeout(() => setNotificacion({ mostrar: false, mensaje: '', tipo: '' }), 3500)
   }
 
-  const manejarCambio = (campo: string, valor: string) => {
+  const manejarCambio = (campo: keyof RawPhysicalTestResults, valor: string) => {
     setResultados(prev => ({ ...prev, [campo]: valor }))
   }
 
@@ -88,17 +96,22 @@ export default function TestFisicos() {
 
     setGuardando(true)
     try {
+      const analisis = analyzePhysicalTest(resultados)
+      const resultadosNormalizados = {
+        ...resultados,
+        analisis,
+      }
       // 🔥 NUEVO: Agregamos club_id al registro de la evaluación
       const { error } = await supabase.from('evaluaciones_fisicas').insert([{
         atleta_id: atletaSeleccionada.id,
         fecha: fechaTest,
-        resultados: resultados,
+        resultados: resultadosNormalizados,
         club_id: clubId 
       }])
       if (error) throw error
       
       mostrarNotificacion('¡Resultados guardados en el historial!', 'exito')
-      setResultados({ dominadas: '', lagartijas: '', soga: '', piernas_flexionadas: '', piernas_extendidas: '', postura_ahuecada: '', carrera_18m: '', vela_salto: '', split: '', hombros: '', arco: '' })
+      setResultados(RESULTADOS_INICIALES)
       
       await cargarHistorial(atletaSeleccionada.id)
       setVistaActiva('historial')
@@ -116,14 +129,14 @@ export default function TestFisicos() {
     if (!confirm('¿Estás seguro de eliminar este test? Se borrará permanentemente de la base de datos.')) return
     
     try {
-      const { error } = await supabase.from('evaluaciones_fisicas').delete().eq('id', testId)
+      const { error } = await supabase.from('evaluaciones_fisicas').delete().eq('id', testId).eq('club_id', clubId)
       if (error) throw error
       
       mostrarNotificacion('Evaluación eliminada correctamente', 'exito')
       
       // Recargamos el historial para que desaparezca visualmente
       if (atletaSeleccionada) {
-        cargarHistorial(atletaSeleccionada.id)
+        void cargarHistorial(atletaSeleccionada.id)
       }
     } catch (error) {
       console.error(error)
@@ -219,29 +232,29 @@ export default function TestFisicos() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                     <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                       <h3 className="font-bold text-indigo-700 text-sm uppercase tracking-wider flex items-center gap-2"><Activity className="w-4 h-4"/> Fuerza de Brazos</h3>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Dominadas (Reps)</label><input type="number" value={resultados.dominadas} onChange={(e)=>manejarCambio('dominadas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Lagartijas (Reps)</label><input type="number" value={resultados.lagartijas} onChange={(e)=>manejarCambio('lagartijas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Subir Soga (Metros)</label><input type="number" value={resultados.soga} onChange={(e)=>manejarCambio('soga', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Dominadas (Reps)</label><input type="number" value={valorFormulario(resultados.dominadas)} onChange={(e)=>manejarCambio('dominadas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Lagartijas (Reps)</label><input type="number" value={valorFormulario(resultados.lagartijas)} onChange={(e)=>manejarCambio('lagartijas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Subir Soga (Metros)</label><input type="number" value={valorFormulario(resultados.soga)} onChange={(e)=>manejarCambio('soga', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                     </div>
 
                     <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                       <h3 className="font-bold text-rose-700 text-sm uppercase tracking-wider flex items-center gap-2"><Activity className="w-4 h-4"/> Fuerza de Abdomen</h3>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Piernas Flexionadas (Tiempo)</label><input type="text" placeholder="Ej. 30s" value={resultados.piernas_flexionadas} onChange={(e)=>manejarCambio('piernas_flexionadas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Piernas Extendidas (Reps)</label><input type="number" value={resultados.piernas_extendidas} onChange={(e)=>manejarCambio('piernas_extendidas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Postura Ahuecada / Canoa (Tiempo)</label><input type="text" placeholder="Ej. 1m 20s" value={resultados.postura_ahuecada} onChange={(e)=>manejarCambio('postura_ahuecada', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Piernas Flexionadas (Tiempo)</label><input type="text" placeholder="Ej. 30s" value={valorFormulario(resultados.piernas_flexionadas)} onChange={(e)=>manejarCambio('piernas_flexionadas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Piernas Extendidas (Reps)</label><input type="number" value={valorFormulario(resultados.piernas_extendidas)} onChange={(e)=>manejarCambio('piernas_extendidas', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Postura Ahuecada / Canoa (Tiempo)</label><input type="text" placeholder="Ej. 1m 20s" value={valorFormulario(resultados.postura_ahuecada)} onChange={(e)=>manejarCambio('postura_ahuecada', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                     </div>
 
                     <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                       <h3 className="font-bold text-amber-700 text-sm uppercase tracking-wider flex items-center gap-2"><Activity className="w-4 h-4"/> Fuerza de Piernas</h3>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Carrera 18.6 mts (Tiempo)</label><input type="text" placeholder="Ej. 4.2s" value={resultados.carrera_18m} onChange={(e)=>manejarCambio('carrera_18m', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Vela Salto Extendido (Reps)</label><input type="number" value={resultados.vela_salto} onChange={(e)=>manejarCambio('vela_salto', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Carrera 18.6 mts (Tiempo)</label><input type="text" placeholder="Ej. 4.2s" value={valorFormulario(resultados.carrera_18m)} onChange={(e)=>manejarCambio('carrera_18m', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Vela Salto Extendido (Reps)</label><input type="number" value={valorFormulario(resultados.vela_salto)} onChange={(e)=>manejarCambio('vela_salto', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                     </div>
 
                     <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                       <h3 className="font-bold text-sky-700 text-sm uppercase tracking-wider flex items-center gap-2"><Activity className="w-4 h-4"/> Flexibilidad (cm / grados)</h3>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Split (cm faltantes)</label><input type="number" value={resultados.split} onChange={(e)=>manejarCambio('split', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Hombros (cm)</label><input type="number" value={resultados.hombros} onChange={(e)=>manejarCambio('hombros', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
-                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Arco (cm / grados)</label><input type="number" value={resultados.arco} onChange={(e)=>manejarCambio('arco', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Split (cm faltantes)</label><input type="number" value={valorFormulario(resultados.split)} onChange={(e)=>manejarCambio('split', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Hombros (cm)</label><input type="number" value={valorFormulario(resultados.hombros)} onChange={(e)=>manejarCambio('hombros', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
+                      <div><label className="text-xs font-bold text-slate-600 block mb-1">Arco (cm / grados)</label><input type="number" value={valorFormulario(resultados.arco)} onChange={(e)=>manejarCambio('arco', e.target.value)} className="w-full p-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none" /></div>
                     </div>
                   </div>
 
@@ -273,7 +286,7 @@ export default function TestFisicos() {
                             <div className="flex items-center gap-2">
                               <Calendar className="w-5 h-5 text-indigo-500" />
                               <h4 className="font-bold text-slate-800 text-lg">
-                                Test del {new Date(test.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                Test del {new Date(test.fecha || fechaTest).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
                               </h4>
                             </div>
                             <button 
@@ -286,7 +299,7 @@ export default function TestFisicos() {
                           </div>
                           
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {Object.entries(test.resultados).map(([llave, valor]) => {
+                            {Object.entries(test.resultados || {}).filter(([llave]) => llave !== 'analisis').map(([llave, valor]) => {
                               const tituloLimpio = llave.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
                               return valor ? (
                                 <div key={llave} className="bg-slate-50 rounded-lg p-3 border border-slate-100">

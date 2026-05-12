@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase' 
 import { useClubStore } from '../../../store/useClubStore' 
 import PlanAnualGrid from '../../components/dashboard/PlanAnualGrid' 
@@ -8,13 +8,22 @@ import HorarioSemanal from '../../components/dashboard/HorarioSemanal'
 import ConstructorSesion from '../../components/dashboard/ConstructorSesion' 
 import GraficosCarga from '../../components/dashboard/GraficosCarga' 
 import { Loader2, LayoutDashboard } from 'lucide-react'
+import { calculateCurrentWeek, getWeekPlan, type PlanningConfig } from '../../lib/sports-planning'
+import type { Grupo } from '../../lib/types'
+
+type GrupoActivo = Grupo & { nivel: string }
+type DiaHorario = { dia: string; [key: string]: unknown }
+type ConfiguracionPlanificacion = PlanningConfig & {
+  grupo_id?: string
+  horario_semanal?: DiaHorario[] | null
+}
 
 export default function DashboardPlanificacion() {
   const { clubId } = useClubStore() 
 
-  const [grupos, setGrupos] = useState<any[]>([])
-  const [grupoSeleccionado, setGrupoSeleccionado] = useState<any>(null)
-  const [configuracion, setConfiguracion] = useState<any>(null)
+  const [grupos, setGrupos] = useState<GrupoActivo[]>([])
+  const [grupoSeleccionado, setGrupoSeleccionado] = useState<GrupoActivo | null>(null)
+  const [configuracion, setConfiguracion] = useState<ConfiguracionPlanificacion | null>(null)
   const [cargandoConfig, setCargandoConfig] = useState(false)
 
   const [semanaNum, setSemanaNum] = useState(1)
@@ -29,7 +38,7 @@ export default function DashboardPlanificacion() {
     const cargarGrupos = async () => {
       if (!clubId) return 
       const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId)
-      if (data) setGrupos(data)
+      if (data) setGrupos(data as GrupoActivo[])
     }
     cargarGrupos()
   }, [clubId]) 
@@ -41,7 +50,7 @@ export default function DashboardPlanificacion() {
       try {
         const { data, error } = await supabase.from('configuracion_grupos').select('*').eq('grupo_id', grupoSeleccionado.id).limit(1)
         if (error) throw error
-        setConfiguracion(data && data.length > 0 ? data[0] : null)
+        setConfiguracion(data && data.length > 0 ? data[0] as ConfiguracionPlanificacion : null)
       } catch (error) {
         console.error(error)
         setConfiguracion(null)
@@ -55,66 +64,17 @@ export default function DashboardPlanificacion() {
   useEffect(() => {
     if (configuracion && configuracion.fecha_inicio) {
       const hoy = new Date();
-      hoy.setHours(12, 0, 0, 0); 
-      
-      const inicioMacro = new Date(`${configuracion.fecha_inicio}T12:00:00`);
-      
-      const diaSemanaInicio = inicioMacro.getDay();
-      const lunesInicio = new Date(inicioMacro);
-      lunesInicio.setDate(inicioMacro.getDate() - (diaSemanaInicio === 0 ? 6 : diaSemanaInicio - 1));
-
-      const diaSemanaHoy = hoy.getDay();
-      const lunesHoy = new Date(hoy);
-      lunesHoy.setDate(hoy.getDate() - (diaSemanaHoy === 0 ? 6 : diaSemanaHoy - 1));
-
-      let semanaCalculada = 1;
-      if (lunesHoy >= lunesInicio) {
-        const diffTime = lunesHoy.getTime() - lunesInicio.getTime();
-        const diffSemanas = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
-        semanaCalculada = diffSemanas + 1;
-      }
-      
-      if (semanaCalculada > configuracion.semanas_totales) semanaCalculada = configuracion.semanas_totales;
-      if (semanaCalculada < 1) semanaCalculada = 1;
+      const semanaCalculada = calculateCurrentWeek(configuracion, hoy)
+      const planSemana = getWeekPlan(configuracion, semanaCalculada)
 
       setSemanaNum(semanaCalculada);
       setSemanaActual(`Semana ${semanaCalculada}`);
-
-      const total = configuracion.semanas_totales || 1;
-      const semGral = Math.round(configuracion.semanas_preparatorio * 0.6);
-      const semEsp = configuracion.semanas_preparatorio - semGral;
-      const semPreComp = Math.round(configuracion.semanas_competitivo * 0.5);
-      const semComp = configuracion.semanas_competitivo - semPreComp;
-
-      const semEntrante = Math.max(1, Math.round(semGral * 0.3));
-      const semBasicoEst = Math.max(1, Math.round(semEsp * 0.6));
-      const semRestablecimiento = semComp - Math.max(1, Math.round(semComp * 0.7));
-
-      let objetivo = 'Preparación General';
-      let mesocicloNombre = 'Entrante';
-
-      if (semanaCalculada <= semEntrante) {
-        objetivo = 'Preparación General'; mesocicloNombre = 'Entrante';
-      } else if (semanaCalculada <= semGral) {
-        objetivo = 'Preparación General'; mesocicloNombre = 'Básico Desarrollador';
-      } else if (semanaCalculada <= semGral + semBasicoEst) {
-        objetivo = 'Preparación Especial'; mesocicloNombre = 'Básico Estabilizador';
-      } else if (semanaCalculada <= semGral + semEsp) {
-        objetivo = 'Preparación Especial'; mesocicloNombre = 'Control y Prep.';
-      } else if (semanaCalculada <= semGral + semEsp + semPreComp) {
-        objetivo = 'Pre-Competitiva'; mesocicloNombre = 'Pulimiento';
-      } else if (semanaCalculada <= total - semRestablecimiento) {
-        objetivo = 'Competitiva'; mesocicloNombre = 'Competitivo';
-      } else {
-        objetivo = 'Competitiva'; mesocicloNombre = 'Restablecimiento';
-      }
-
-      setObjetivoFase(`${objetivo} (${mesocicloNombre})`);
+      setObjetivoFase(planSemana.objetivo);
 
       const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
       const nombreDiaHoy = diasSemanaNombres[hoy.getDay()];
       
-      const entrenaHoy = configuracion.horario_semanal?.find((d: any) => d.dia === nombreDiaHoy);
+      const entrenaHoy = configuracion.horario_semanal?.find((d) => d.dia === nombreDiaHoy);
       if (entrenaHoy) {
         setDiaSeleccionado(nombreDiaHoy);
       } else {
@@ -122,6 +82,13 @@ export default function DashboardPlanificacion() {
       }
     }
   }, [configuracion]);
+
+  const seleccionarDia = useCallback((dia: string, enfoque: string, fechaExacta: string, hora: string) => {
+    setDiaSeleccionado(dia)
+    setEnfoqueDelDia(enfoque)
+    setFechaExactaDia(fechaExacta)
+    setHoraDia(hora)
+  }, [])
 
   return (
     <div className="p-2 md:p-4 font-sans bg-slate-50 min-h-screen">
@@ -147,7 +114,7 @@ export default function DashboardPlanificacion() {
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
       ) : !configuracion && grupoSeleccionado ? (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl mb-6 shadow-sm"><h3 className="font-bold text-amber-800">Sin configuración</h3><p className="text-sm text-amber-700">Ve a Configuración para asignar fechas a este equipo.</p></div>
-      ) : configuracion ? (
+      ) : configuracion && grupoSeleccionado ? (
         <>
           <PlanAnualGrid 
             configuracion={configuracion}
@@ -158,6 +125,7 @@ export default function DashboardPlanificacion() {
           />
           
           <GraficosCarga 
+            configuracion={configuracion}
             horarioPersonalizado={configuracion.horario_semanal}
             semanaNum={semanaNum}
             mesocicloActivo={objetivoFase}
@@ -169,9 +137,7 @@ export default function DashboardPlanificacion() {
             mesocicloActivo={objetivoFase} 
             fechaInicio={configuracion.fecha_inicio}
             horarioPersonalizado={configuracion.horario_semanal}
-            onSeleccionarDia={(dia: string, enfoque: string, fechaExacta: string, hora: string) => {
-              setDiaSeleccionado(dia); setEnfoqueDelDia(enfoque); setFechaExactaDia(fechaExacta); setHoraDia(hora);
-            }}
+            onSeleccionarDia={seleccionarDia}
           />
           
           <ConstructorSesion

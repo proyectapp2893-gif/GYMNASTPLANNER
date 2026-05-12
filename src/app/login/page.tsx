@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase';
 import { useClubStore } from '../../../store/useClubStore'; // 🔥 Ruta corregida (le quité un '../')
 import { Mail, Lock, Loader2, Dumbbell, AlertCircle, Building2, User, CheckCircle2 } from 'lucide-react';
 
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido';
+
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -105,8 +107,8 @@ export default function LoginPage() {
           await supabase.auth.signOut(); 
         }
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(getErrorMessage(err));
     } finally {
       setCargando(false);
     }

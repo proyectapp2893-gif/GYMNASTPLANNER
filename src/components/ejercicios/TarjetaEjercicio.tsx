@@ -1,11 +1,15 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { PlayCircle, X, Save, Loader2, Link as LinkIcon, Clock } from 'lucide-react'
+import { PlayCircle, X, Save, Loader2, Link as LinkIcon } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useClubStore } from '../../../store/useClubStore'
+import { normalizeExerciseInput, normalizeVideoUrl } from '../../lib/exercise-normalization'
+import type { Ejercicio } from '../../lib/types'
 
-export default function TarjetaEjercicio({ ejercicio }: { ejercicio: any }) {
+export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }) {
+  const { clubId } = useClubStore()
   const router = useRouter()
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -18,7 +22,7 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: any }) {
     if (ejercicio.video_url) {
       try {
         const urlObj = new URL(ejercicio.video_url);
-        let params = new URLSearchParams(urlObj.search);
+        const params = new URLSearchParams(urlObj.search);
         const tiempo = params.get('t');
         
         if (tiempo) {
@@ -40,7 +44,7 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: any }) {
         } else {
           setUrlBase(ejercicio.video_url);
         }
-      } catch (e) {
+      } catch {
         setUrlBase(ejercicio.video_url);
       }
     }
@@ -69,25 +73,27 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: any }) {
           const m = parseInt(minuto) || 0;
           const s = parseInt(segundo) || 0;
           if (m > 0 || s > 0) {
-            let params = new URLSearchParams(urlObj.search);
+            const params = new URLSearchParams(urlObj.search);
             params.set('t', `${m}m${s}s`);
             urlObj.search = params.toString();
             finalVideoUrl = urlObj.toString();
           }
-        } catch (e) {
+        } catch {
           console.warn("URL inválida introducida por el usuario.");
         }
       }
+      finalVideoUrl = normalizeVideoUrl(finalVideoUrl)
 
-      const datosAEnviar = {
+      const datosAEnviar = normalizeExerciseInput({
         ...formData,
         video_url: finalVideoUrl
-      };
+      })
 
       const { error } = await supabase
         .from('ejercicios')
         .update(datosAEnviar)
         .eq('id', ejercicio.id)
+        .eq('club_id', clubId)
 
       if (error) throw error
       
@@ -101,14 +107,15 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: any }) {
     }
   }
 
-  const esTarjeta = ejercicio.categoria?.includes("Tarjeta")
+  const categoria = ejercicio.categoria || ''
+  const esTarjeta = categoria.includes("Tarjeta")
   let colorBadge = "bg-slate-100 text-slate-600 border-slate-200"
   if (esTarjeta) {
-    if (ejercicio.categoria.includes("Roja")) colorBadge = "bg-red-100 text-red-700 border-red-200"
-    if (ejercicio.categoria.includes("Verde")) colorBadge = "bg-green-100 text-green-700 border-green-200"
-    if (ejercicio.categoria.includes("Amarilla")) colorBadge = "bg-yellow-100 text-yellow-700 border-yellow-200"
-    if (ejercicio.categoria.includes("Azul")) colorBadge = "bg-blue-100 text-blue-700 border-blue-200"
-    if (ejercicio.categoria.includes("Naranja")) colorBadge = "bg-orange-100 text-orange-700 border-orange-200"
+    if (categoria.includes("Roja")) colorBadge = "bg-red-100 text-red-700 border-red-200"
+    if (categoria.includes("Verde")) colorBadge = "bg-green-100 text-green-700 border-green-200"
+    if (categoria.includes("Amarilla")) colorBadge = "bg-yellow-100 text-yellow-700 border-yellow-200"
+    if (categoria.includes("Azul")) colorBadge = "bg-blue-100 text-blue-700 border-blue-200"
+    if (categoria.includes("Naranja")) colorBadge = "bg-orange-100 text-orange-700 border-orange-200"
   }
 
   let colorDificultad = 'bg-rose-100 text-rose-700'

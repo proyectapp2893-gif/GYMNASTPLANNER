@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, type ComponentType } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' // 🔥 NUEVO: Importamos nuestra memoria central
 import { Trophy, Medal, PlusCircle, Save, Loader2, CheckCircle2, XCircle, Award, ChevronRight } from 'lucide-react'
+import type { Atleta, Competencia, Grupo, Puntuacion } from '../../lib/types'
 
 // =========================================================================
 // 🔥 ICONOS GIMNÁSTICOS PERSONALIZADOS (SVGs Puros)
@@ -47,15 +48,19 @@ const IconSuelo = ({ className }: { className?: string }) => (
   </svg>
 )
 
+const APARATOS = ['Salto', 'Barras', 'Viga', 'Suelo'] as const
+type Aparato = typeof APARATOS[number]
+type NotaAparato = Record<Aparato, { d: string, e: string }>
+
 export default function Puntuacion() {
   const { clubId } = useClubStore() // 🔥 NUEVO: Extraemos el ID del club activo
 
-  const [competencias, setCompetencias] = useState<any[]>([])
-  const [competenciaActiva, setCompetenciaActiva] = useState<any>(null)
-  const [grupos, setGrupos] = useState<any[]>([])
+  const [competencias, setCompetencias] = useState<Competencia[]>([])
+  const [competenciaActiva, setCompetenciaActiva] = useState<Competencia | null>(null)
+  const [grupos, setGrupos] = useState<Grupo[]>([])
   const [grupoSeleccionado, setGrupoSeleccionado] = useState('')
-  const [atletas, setAtletas] = useState<any[]>([])
-  const [atletaSeleccionada, setAtletaSeleccionada] = useState<any>(null)
+  const [atletas, setAtletas] = useState<Atleta[]>([])
+  const [atletaSeleccionada, setAtletaSeleccionada] = useState<Atleta | null>(null)
   
   const [cargando, setCargando] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -66,8 +71,16 @@ export default function Puntuacion() {
 
   const [sistemaJueceo, setSistemaJueceo] = useState<'USAG' | 'FIG'>('USAG')
 
-  const aparatos = ['Salto', 'Barras', 'Viga', 'Suelo']
-  const [notas, setNotas] = useState<Record<string, { d: string, e: string }>>({
+  const aparatos = APARATOS
+
+  const crearNotasVacias = useCallback((): NotaAparato => ({
+    'Salto': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
+    'Barras': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
+    'Viga': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
+    'Suelo': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' }
+  }), [sistemaJueceo])
+
+  const [notas, setNotas] = useState<NotaAparato>({
     'Salto': { d: '10.000', e: '' },
     'Barras': { d: '10.000', e: '' },
     'Viga': { d: '10.000', e: '' },
@@ -75,34 +88,49 @@ export default function Puntuacion() {
   })
 
   // Mapeamos los aparatos con nuestros nuevos SVGs dibujados
-  const apparatusIcons: Record<string, any> = {
+  const apparatusIcons: Record<Aparato, ComponentType<{ className?: string }>> = {
     'Salto': IconSalto,
     'Barras': IconBarras,
     'Viga': IconViga,
     'Suelo': IconSuelo
   };
 
+  const cargarCompetencias = useCallback(async () => {
+    if (!clubId) return // 🔥 Doble seguridad
+    // 🔥 NUEVO: Filtramos competencias por club_id
+    const { data } = await supabase.from('competencias').select('*').eq('club_id', clubId).order('fecha', { ascending: false })
+    const competenciasClub = (data || []) as Competencia[]
+    setCompetencias(competenciasClub)
+    if (competenciasClub.length > 0 && !competenciaActiva) setCompetenciaActiva(competenciasClub[0])
+  }, [clubId, competenciaActiva])
+
+  const cargarGrupos = useCallback(async () => {
+    if (!clubId) return // 🔥 Doble seguridad
+    // 🔥 NUEVO: Filtramos grupos por club_id
+    const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId)
+    setGrupos((data || []) as Grupo[])
+  }, [clubId])
+
   useEffect(() => {
     // 🔥 NUEVO: Solo cargamos datos si ya tenemos el clubId
     if (clubId) {
-      cargarCompetencias()
-      cargarGrupos()
+      void cargarCompetencias()
+      void cargarGrupos()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clubId]) // 🔥 NUEVO: Dependencia actualizada
+  }, [clubId, cargarCompetencias, cargarGrupos]) // 🔥 NUEVO: Dependencia actualizada
 
   useEffect(() => {
-    if (!grupoSeleccionado) return
+    if (!grupoSeleccionado || !clubId) return
     const cargarAtletas = async () => {
       setCargando(true)
       // Nota: Como los grupos ya están filtrados, los atletas de este grupo pertenecen a este club
-      const { data } = await supabase.from('atletas').select('*').eq('grupo_id', grupoSeleccionado).order('nombre')
-      setAtletas(data || [])
+      const { data } = await supabase.from('atletas').select('*').eq('grupo_id', grupoSeleccionado).eq('club_id', clubId).order('nombre')
+      setAtletas((data || []) as Atleta[])
       setAtletaSeleccionada(null)
       setCargando(false)
     }
     cargarAtletas()
-  }, [grupoSeleccionado])
+  }, [clubId, grupoSeleccionado])
 
   useEffect(() => {
     if (atletaSeleccionada && competenciaActiva) {
@@ -114,39 +142,22 @@ export default function Puntuacion() {
           .eq('atleta_id', atletaSeleccionada.id)
 
         if (data && data.length > 0) {
-          const notasRestauradas = { ...notas }
-          data.forEach((p: any) => {
-            notasRestauradas[p.aparato] = { d: String(p.nota_d), e: String(p.nota_e) }
+          setNotas(() => {
+            const notasRestauradas = crearNotasVacias()
+            ;(data as Puntuacion[]).forEach((p) => {
+              if (APARATOS.includes(p.aparato as Aparato)) {
+                notasRestauradas[p.aparato as Aparato] = { d: String(p.nota_d ?? ''), e: String(p.nota_e ?? '') }
+              }
+            })
+            return notasRestauradas
           })
-          setNotas(notasRestauradas)
         } else {
-          setNotas({
-            'Salto': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
-            'Barras': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
-            'Viga': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' },
-            'Suelo': { d: sistemaJueceo === 'USAG' ? '10.000' : '', e: '' }
-          })
+          setNotas(crearNotasVacias())
         }
       }
       cargarNotasExistentes()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atletaSeleccionada, competenciaActiva, sistemaJueceo])
-
-  const cargarCompetencias = async () => {
-    if (!clubId) return // 🔥 Doble seguridad
-    // 🔥 NUEVO: Filtramos competencias por club_id
-    const { data } = await supabase.from('competencias').select('*').eq('club_id', clubId).order('fecha', { ascending: false })
-    setCompetencias(data || [])
-    if (data && data.length > 0 && !competenciaActiva) setCompetenciaActiva(data[0])
-  }
-
-  const cargarGrupos = async () => {
-    if (!clubId) return // 🔥 Doble seguridad
-    // 🔥 NUEVO: Filtramos grupos por club_id
-    const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId)
-    setGrupos(data || [])
-  }
+  }, [atletaSeleccionada, competenciaActiva, crearNotasVacias])
 
   const mostrarToast = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
@@ -168,14 +179,14 @@ export default function Puntuacion() {
       if (error) throw error
       mostrarToast('Evento creado exitosamente', 'exito')
       setMostrarNuevoEvento(false)
-      cargarCompetencias()
+      void cargarCompetencias()
     } catch (error) {
       console.error(error)
       mostrarToast('Error al crear el evento', 'error')
     }
   }
 
-  const calcularNotaFinal = (aparato: string) => {
+  const calcularNotaFinal = (aparato: Aparato) => {
     const n = notas[aparato]
     const d = parseFloat(n.d) || 0
     const e = parseFloat(n.e) || 0
@@ -192,7 +203,7 @@ export default function Puntuacion() {
     return aparatos.reduce((total, aparato) => total + calcularNotaFinal(aparato), 0)
   }
 
-  const manejarCambioNota = (aparato: string, campo: 'd' | 'e', valor: string) => {
+  const manejarCambioNota = (aparato: Aparato, campo: 'd' | 'e', valor: string) => {
     setNotas(prev => ({ ...prev, [aparato]: { ...prev[aparato], [campo]: valor } }))
   }
 
@@ -201,7 +212,7 @@ export default function Puntuacion() {
     setGuardando(true)
 
     try {
-      const puntuacionesArray = aparatos.map(aparato => ({
+      const puntuacionesArray: Puntuacion[] = aparatos.map(aparato => ({
         competencia_id: competenciaActiva.id,
         atleta_id: atletaSeleccionada.id,
         aparato: aparato,
@@ -263,7 +274,7 @@ export default function Puntuacion() {
               </form>
             )}
 
-            <select value={competenciaActiva?.id || ''} onChange={(e) => setCompetenciaActiva(competencias.find(c => c.id === e.target.value))} className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-800 cursor-pointer shadow-sm text-sm uppercase">
+            <select value={competenciaActiva?.id || ''} onChange={(e) => setCompetenciaActiva(competencias.find(c => c.id === e.target.value) || null)} className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-800 cursor-pointer shadow-sm text-sm uppercase">
               {competencias.length === 0 && <option disabled>No hay eventos...</option>}
               {competencias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>

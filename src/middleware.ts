@@ -38,17 +38,25 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const esSuperadmin = user?.email?.toLowerCase() === 'gymnastplanner@gmail.com'
 
   // 🚪 REGLA 1: Si no hay sesión y NO está en el login (/), mandarlo al login
-  if (!session && request.nextUrl.pathname !== '/') {
+  if (!user && request.nextUrl.pathname !== '/') {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
+  if (user && request.nextUrl.pathname.startsWith('/superadmin') && !esSuperadmin) {
+    return NextResponse.redirect(new URL('/inicio', request.url))
+  }
+
   // 🏠 REGLA 2: Si ya hay sesión y está en el login (/), mandarlo a su panel correspondiente
-  if (session && request.nextUrl.pathname === '/') {
+  if (user && request.nextUrl.pathname === '/') {
     // Si eres tú (el dueño), te manda al panel maestro
-    if (session.user.email?.toLowerCase() === 'gymnastplanner@gmail.com') {
+    if (esSuperadmin) {
       return NextResponse.redirect(new URL('/superadmin', request.url))
     } else {
       // Si es un entrenador, lo manda a la nueva pantalla de Inicio

@@ -1,11 +1,29 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Calendar, Clock, MapPin, Activity } from 'lucide-react'
 
-export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, fechaInicio, horarioPersonalizado, onSeleccionarDia }: any) {
+const DIAS_OFFSET: Record<string, number> = { 'Lunes': 0, 'Martes': 1, 'Miércoles': 2, 'Jueves': 3, 'Viernes': 4, 'Sábado': 5, 'Domingo': 6 }
+
+export interface DiaHorario {
+  dia: string
+  enfoque?: string | null
+  aparatos?: string | null
+  lugar?: string | null
+  hora?: string | null
+}
+
+interface HorarioSemanalProps {
+  semanaActual: string
+  semanaNum: number
+  mesocicloActivo: string
+  fechaInicio?: string | null
+  horarioPersonalizado?: DiaHorario[] | null
+  onSeleccionarDia: (dia: string, enfoque: string, fechaExacta: string, hora: string) => void
+}
+
+export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, fechaInicio, horarioPersonalizado, onSeleccionarDia }: HorarioSemanalProps) {
   const [diaActivo, setDiaActivo] = useState('Lunes')
-  const diasOffset: Record<string, number> = { 'Lunes': 0, 'Martes': 1, 'Miércoles': 2, 'Jueves': 3, 'Viernes': 4, 'Sábado': 5, 'Domingo': 6 }
 
   const { inicioSemanaDate, rangoFechas } = useMemo(() => {
     const baseDate = fechaInicio ? new Date(`${fechaInicio}T12:00:00`) : new Date()
@@ -28,27 +46,30 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
     }
   }, [fechaInicio, semanaNum])
 
-  const calcularFechaDia = (nombreDia: string) => {
-    const offset = diasOffset[nombreDia] || 0
+  const calcularFechaDia = useCallback((nombreDia: string) => {
+    const offset = DIAS_OFFSET[nombreDia] || 0
     const fecha = new Date(inicioSemanaDate)
     fecha.setDate(fecha.getDate() + offset)
     return fecha
-  }
+  }, [inicioSemanaDate])
+
+  const diaActivoValido = useMemo(() => {
+    if (!horarioPersonalizado || horarioPersonalizado.length === 0) return diaActivo
+    return horarioPersonalizado.some(dia => dia.dia === diaActivo) ? diaActivo : horarioPersonalizado[0].dia
+  }, [diaActivo, horarioPersonalizado])
 
   useEffect(() => {
     if (horarioPersonalizado && horarioPersonalizado.length > 0) {
-      const d = horarioPersonalizado.find((x: any) => x.dia === diaActivo) || horarioPersonalizado[0]
-      setDiaActivo(d.dia)
+      const d = horarioPersonalizado.find((x) => x.dia === diaActivoValido) || horarioPersonalizado[0]
       const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      onSeleccionarDia(d.dia, d.enfoque, fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora)
+      onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [horarioPersonalizado, semanaNum, inicioSemanaDate])
+  }, [calcularFechaDia, diaActivoValido, horarioPersonalizado, onSeleccionarDia])
 
-  const manejarClicDia = (d: any) => {
+  const manejarClicDia = (d: DiaHorario) => {
     setDiaActivo(d.dia)
     const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-    onSeleccionarDia(d.dia, d.enfoque, fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora)
+    onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '')
   }
 
   const colores = ['bg-blue-50 text-blue-700', 'bg-emerald-50 text-emerald-700', 'bg-purple-50 text-purple-700', 'bg-rose-50 text-rose-700', 'bg-amber-50 text-amber-700', 'bg-slate-100 text-slate-800']
@@ -76,9 +97,9 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
 
       {/* 🔥 MAGIA VISUAL: py-4, px-2 y -mx-2 le dan "aire" a las tarjetas para que no se corten los bordes al crecer 🔥 */}
       <div className="flex flex-row overflow-x-auto gap-3 md:gap-4 py-4 px-2 -mx-2 snap-x hide-scrollbar w-full items-stretch">
-        {horarioPersonalizado.map((dia: any, idx: number) => {
+        {horarioPersonalizado.map((dia, idx) => {
           const colorClass = colores[idx % colores.length]
-          const isActivo = diaActivo === dia.dia
+          const isActivo = diaActivoValido === dia.dia
           
           const fechaObj = calcularFechaDia(dia.dia)
           const numDia = fechaObj.getDate()

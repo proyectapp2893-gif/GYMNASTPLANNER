@@ -1,16 +1,37 @@
 "use client"
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Dumbbell, Trophy, Tent, Coffee, Calendar as CalendarIcon, X, Clock, MapPin, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Dumbbell, Trophy, Tent, Coffee, Calendar as CalendarIcon, X, Clock, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useClubStore } from '../../../store/useClubStore';
+import type { Competencia, Sesion } from '../../lib/types';
+
+type EventoCalendario = {
+  id: string
+  fecha: Date
+  tipo: 'entrenamiento' | 'competencia' | 'campamento' | 'descanso'
+  titulo: string
+  nivel: string
+}
+
+type DiaSeleccionado = {
+  fecha: Date
+  eventos: EventoCalendario[]
+}
+
+const formatearFechaLocal = (d: Date) => {
+  const z = (n: number) => (n < 10 ? '0' : '') + n
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`
+}
+
+const parsearFechaLocal = (fecha: string) => new Date(`${fecha}T12:00:00`)
 
 export default function CalendarioPage() {
   const { clubId, nombreClub } = useClubStore();
   const [fechaActual, setFechaActual] = useState(new Date());
-  const [eventos, setEventos] = useState<any[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [diaSeleccionado, setDiaSeleccionado] = useState<any | null>(null);
+  const [eventos, setEventos] = useState<EventoCalendario[]>([]);
+  const [, setCargando] = useState(true);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<DiaSeleccionado | null>(null);
 
   const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -27,23 +48,39 @@ export default function CalendarioPage() {
     // Aquí buscaremos las sesiones usando la nueva columna fecha_calendario
     const { data: sesiones } = await supabase
       .from('sesiones')
-      .select('*')
-      .eq('club_id', clubId);
+      .select('id, nivel, objetivo, fecha_calendario')
+      .eq('club_id', clubId)
+      .gte('fecha_calendario', formatearFechaLocal(new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1)))
+      .lte('fecha_calendario', formatearFechaLocal(new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0)));
 
-    // DATOS DE PRUEBA: Mientras conectamos la fecha exacta, pondremos algunos eventos simulados 
-    // en el mes actual para que veas cómo se ve la magia visual.
-    const year = fechaActual.getFullYear();
-    const month = fechaActual.getMonth();
-    
-    const eventosSimulados = [
-      { id: 1, fecha: new Date(year, month, 5), tipo: 'entrenamiento', titulo: 'Fuerza y Viga', nivel: 'Avanzado' },
-      { id: 2, fecha: new Date(year, month, 12), tipo: 'entrenamiento', titulo: 'Coreografía', nivel: 'Base' },
-      { id: 3, fecha: new Date(year, month, 15), tipo: 'descanso', titulo: 'Recuperación Activa', nivel: 'Todos' },
-      { id: 4, fecha: new Date(year, month, 20), tipo: 'competencia', titulo: 'Copa Regional', nivel: 'Élite' },
-      { id: 5, fecha: new Date(year, month, 28), tipo: 'campamento', titulo: 'Campamento de Verano', nivel: 'Desarrollo' },
-    ];
+    const { data: competencias } = await supabase
+      .from('competencias')
+      .select('id, nombre, fecha, tipo')
+      .eq('club_id', clubId)
+      .gte('fecha', formatearFechaLocal(new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1)))
+      .lte('fecha', formatearFechaLocal(new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0)));
 
-    setEventos(eventosSimulados);
+    const eventosSesiones: EventoCalendario[] = ((sesiones || []) as Sesion[])
+      .filter(sesion => Boolean(sesion.fecha_calendario))
+      .map(sesion => ({
+        id: `sesion-${sesion.id}`,
+        fecha: parsearFechaLocal(sesion.fecha_calendario || ''),
+        tipo: 'entrenamiento',
+        titulo: sesion.objetivo || 'Entrenamiento',
+        nivel: sesion.nivel || 'General',
+      }));
+
+    const eventosCompetencias: EventoCalendario[] = ((competencias || []) as Competencia[])
+      .filter(comp => Boolean(comp.fecha))
+      .map(comp => ({
+        id: `competencia-${comp.id}`,
+        fecha: parsearFechaLocal(comp.fecha),
+        tipo: 'competencia',
+        titulo: comp.nombre,
+        nivel: comp.tipo || 'Competencia',
+      }));
+
+    setEventos([...eventosSesiones, ...eventosCompetencias]);
     setCargando(false);
   };
 
@@ -186,7 +223,7 @@ export default function CalendarioPage() {
             </div>
             
             <div className="p-6 flex flex-col gap-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              {diaSeleccionado.eventos.map((evento: any) => {
+              {diaSeleccionado.eventos.map((evento) => {
                 const estilo = getEstiloEvento(evento.tipo);
                 const Icono = estilo.icon;
                 return (

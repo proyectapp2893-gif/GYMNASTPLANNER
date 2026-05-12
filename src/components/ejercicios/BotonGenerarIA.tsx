@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Sparkles, Loader2, X, BrainCircuit, Target, Hash } from 'lucide-react';
 
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido'
+
 export default function BotonGenerarIA() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tema, setTema] = useState('');
@@ -40,10 +42,10 @@ export default function BotonGenerarIA() {
         throw new Error("La API no devolvió el estado de éxito.");
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error completo:", error);
       // Ahora la alerta nos dirá EXACTAMENTE qué falló
-      alert(`Ocurrió un error: ${error.message}\n\nRevisa la consola (F12) para más detalles.`);
+      alert(`Ocurrió un error: ${getErrorMessage(error)}\n\nRevisa la consola (F12) para más detalles.`);
     } finally {
       setCargando(false);
     }

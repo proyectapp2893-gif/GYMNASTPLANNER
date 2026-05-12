@@ -1,39 +1,63 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
 import { Users, Activity, Trophy, Calendar, Dumbbell, Award, Flame, Loader2, AlertCircle, ChevronLeft, ChevronRight, Filter, X, Edit3, PlusCircle, CheckCircle2, ShieldCheck, Wind } from 'lucide-react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import TermometroFisicoCard from '../../components/dashboard/TermometroFisico'
+import { analyzePhysicalTest, type RawPhysicalTestResults } from '../../lib/physical-tests'
+import type { Competencia, JsonObject, Sesion } from '../../lib/types'
+
+type DosificacionSesion = string | {
+  avanzado?: string
+  base?: string
+  desarrollo?: string
+}
+
+interface EjercicioResumen {
+  id?: string
+  contenido?: string
+  nombre?: string
+  dosificacion?: DosificacionSesion | null
+}
+
+type EjerciciosSesion = Record<string, EjercicioResumen[] | undefined>
+
+type SesionCalendario = Omit<Sesion, 'ejercicios'> & {
+  ejercicios?: EjerciciosSesion | null
+}
+
+const isRecord = (value: unknown): value is JsonObject => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 export default function InicioPage() {
   const router = useRouter()
   const { clubId, nombreClub } = useClubStore() 
 
   const [stats, setStats] = useState({ atletas: 0, grupos: 0 })
-  const [proximoEvento, setProximoEvento] = useState<any>(null)
+  const [proximoEvento, setProximoEvento] = useState<Competencia | null>(null)
   const [rendimiento, setRendimiento] = useState({ dominadas: 0, lagartijas: 0 })
   const [cargando, setCargando] = useState(true)
   const [timeoutAlcanzado, setTimeoutAlcanzado] = useState(false)
   
   const [fechaInicioSemana, setFechaInicioSemana] = useState(new Date())
-  const [sesionesDeSemana, setSesionesDeSemana] = useState<any[]>([])
+  const [sesionesDeSemana, setSesionesDeSemana] = useState<SesionCalendario[]>([])
   const [nivelFiltro, setNivelFiltro] = useState('Todos') 
   const [nivelesDisponibles, setNivelesDisponibles] = useState<string[]>([])
   
   const [modalAbierto, setModalAbierto] = useState(false)
   const [diaSeleccionadoModal, setDiaSeleccionadoModal] = useState<Date | null>(null)
-  const [sesionSeleccionadaModal, setSesionSeleccionadaModal] = useState<any | null>(null)
+  const [sesionSeleccionadaModal, setSesionSeleccionadaModal] = useState<SesionCalendario | null>(null)
   const [tabActivoModal, setTabActivoModal] = useState('calentamiento')
 
   const diasSemanaNombres = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
-  const formatearFechaLocal = (d: Date) => {
+  const formatearFechaLocal = useCallback((d: Date) => {
     const z = (n: number) => (n < 10 ? '0' : '') + n;
     return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
-  }
+  }, [])
 
   // Control de timeout por si la base de datos tarda o no hay club
   useEffect(() => {
@@ -43,6 +67,19 @@ export default function InicioPage() {
     }
     return () => clearTimeout(timer);
   }, [cargando, clubId]);
+
+  const cargarSesionesMiniCalendario = useCallback(async (fechaBase: Date) => {
+    if (!clubId) return;
+    const inicio = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate());
+    inicio.setDate(inicio.getDate() - inicio.getDay());
+    const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
+
+    const inicioStr = formatearFechaLocal(inicio);
+    const finStr = formatearFechaLocal(fin);
+
+    const { data: sesiones } = await supabase.from('sesiones').select('id, nivel, objetivo, fecha_calendario, ejercicios').eq('club_id', clubId).gte('fecha_calendario', inicioStr).lte('fecha_calendario', finStr);
+    setSesionesDeSemana((sesiones || []) as SesionCalendario[]);
+  }, [clubId, formatearFechaLocal]);
 
   // Carga principal de datos del Dashboard de Inicio
   useEffect(() => {
@@ -60,15 +97,18 @@ export default function InicioPage() {
       // 2. Cargar Próximo Evento
       const hoyStr = formatearFechaLocal(new Date())
       const { data: evento } = await supabase.from('competencias').select('*').eq('club_id', clubId).gte('fecha', hoyStr).order('fecha', { ascending: true }).limit(1).single()
-      if (evento) setProximoEvento(evento)
+      if (evento) setProximoEvento(evento as Competencia)
 
       // 3. Cargar Datos del Termómetro (Evaluaciones)
       const { data: evaluaciones } = await supabase.from('evaluaciones_fisicas').select('resultados').eq('club_id', clubId).order('created_at', { ascending: false }).limit(20) 
       if (evaluaciones && evaluaciones.length > 0) {
         let totalDominadas = 0, totalLagartijas = 0, validos = 0
         evaluaciones.forEach(ev => {
-          const dom = parseInt(ev.resultados.dominadas)
-          const lag = parseInt(ev.resultados.lagartijas)
+          const resultados = isRecord(ev.resultados) ? ev.resultados : {}
+          const analisis = isRecord(resultados.analisis) ? resultados.analisis : analyzePhysicalTest(resultados as RawPhysicalTestResults)
+          const metricas = isRecord(analisis.metricas_normalizadas) ? analisis.metricas_normalizadas : {}
+          const dom = Number(metricas.dominadas_reps ?? resultados.dominadas)
+          const lag = Number(metricas.lagartijas_reps ?? resultados.lagartijas)
           if (!isNaN(dom) && !isNaN(lag)) { 
             totalDominadas += dom; 
             totalLagartijas += lag; 
@@ -88,35 +128,23 @@ export default function InicioPage() {
       // 4. Cargar Niveles para el Filtro
       const { data: gruposData } = await supabase.from('grupos').select('nivel').eq('club_id', clubId)
       if (gruposData) {
-        const nivelesUnicos = Array.from(new Set(gruposData.map(g => g.nivel)))
-        setNivelesDisponibles(nivelesUnicos as string[])
+        const nivelesUnicos = Array.from(new Set(gruposData.map(g => g.nivel).filter((nivel): nivel is string => Boolean(nivel))))
+        setNivelesDisponibles(nivelesUnicos)
       }
 
-      cargarSesionesMiniCalendario(fechaInicioSemana);
       setCargando(false)
     }
 
     cargarDashboard()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clubId]) 
+  }, [clubId, formatearFechaLocal]) 
 
-  const cargarSesionesMiniCalendario = async (fechaBase: Date) => {
-    if (!clubId) return;
-    const inicio = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate());
-    inicio.setDate(inicio.getDate() - inicio.getDay());
-    const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
-
-    const inicioStr = formatearFechaLocal(inicio);
-    const finStr = formatearFechaLocal(fin);
-
-    const { data: sesiones } = await supabase.from('sesiones').select('id, nivel, objetivo, fecha_calendario, ejercicios').eq('club_id', clubId).gte('fecha_calendario', inicioStr).lte('fecha_calendario', finStr);
-    setSesionesDeSemana(sesiones || []);
-  };
+  useEffect(() => {
+    void cargarSesionesMiniCalendario(fechaInicioSemana)
+  }, [cargarSesionesMiniCalendario, fechaInicioSemana])
 
   const cambiarSemana = (dias: number) => {
     const nuevaFecha = new Date(fechaInicioSemana.getFullYear(), fechaInicioSemana.getMonth(), fechaInicioSemana.getDate() + dias);
     setFechaInicioSemana(nuevaFecha);
-    cargarSesionesMiniCalendario(nuevaFecha);
   };
 
   const obtenerDiasSemanaVisible = () => {
@@ -129,7 +157,7 @@ export default function InicioPage() {
     return dias;
   };
 
-  const abrirPantallaFlotante = (dia: Date, sesion: any) => {
+  const abrirPantallaFlotante = (dia: Date, sesion: SesionCalendario | null) => {
     setDiaSeleccionadoModal(dia);
     setSesionSeleccionadaModal(sesion);
     setTabActivoModal('calentamiento'); 
@@ -277,12 +305,12 @@ export default function InicioPage() {
                               <Activity className="w-3.5 h-3.5 text-indigo-500" />
                               <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Planificado</span>
                             </div>
-                            <p className="text-xs font-bold text-slate-800 leading-tight line-clamp-2">{infoSesion.objetivo}</p>
+                            <p className="text-xs font-bold text-slate-800 leading-tight line-clamp-2">{infoSesion?.objetivo}</p>
                           </div>
                           <div className="mt-4 pt-3 border-t border-slate-100/80">
                              <div className="flex items-center gap-1.5 text-slate-500 mb-1">
                                <Users className="w-3 h-3" />
-                               <span className="text-[10px] font-bold truncate">{infoSesion.nivel}</span>
+                               <span className="text-[10px] font-bold truncate">{infoSesion?.nivel}</span>
                              </div>
                           </div>
                         </>
@@ -341,9 +369,9 @@ export default function InicioPage() {
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                    {sesionSeleccionadaModal.ejercicios?.[tabActivoModal]?.length > 0 ? (
+                    {(sesionSeleccionadaModal.ejercicios?.[tabActivoModal] || []).length > 0 ? (
                       <div className="flex flex-col gap-3">
-                        {sesionSeleccionadaModal.ejercicios[tabActivoModal].map((ej: any, idx: number) => (
+                        {(sesionSeleccionadaModal.ejercicios?.[tabActivoModal] || []).map((ej, idx) => (
                           <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2 hover:border-indigo-300 transition-colors">
                             <h4 className="font-bold text-slate-800 text-base">{ej.contenido || ej.nombre}</h4>
                             
