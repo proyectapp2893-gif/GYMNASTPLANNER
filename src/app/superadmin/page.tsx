@@ -843,7 +843,7 @@ export default function SuperAdminPage() {
                     <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg"><Plus className="w-5 h-5" /></div>
                     <h2 className="text-xl font-bold text-white">Nuevo Ejercicio</h2>
                   </div>
-                  <BotonGenerarIA />
+                  <BotonGenerarIA global onSuccess={cargarDatos} />
                 </div>
                 <form onSubmit={crearEjercicioGlobal} className="flex flex-col gap-4">
                   <div>

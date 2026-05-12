@@ -2,34 +2,49 @@ import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 import { extractJsonArray, generateTextWithRetry, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
-import { getAuthenticatedClub } from '../../../../lib/supabase-server'
+import { createSupabaseServerClient, createSupabaseServiceClient, getAuthenticatedClub } from '../../../../lib/supabase-server'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
 const genAI = new GoogleGenerativeAI(apiKey)
 const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
 
 const generarEjerciciosSchema = z.object({
   tema: z.string().trim().min(3).max(120),
   cantidad: z.coerce.number().int().min(1).max(15).default(5),
+  global: z.boolean().optional().default(false),
 })
+
+async function isSuperAdminRequest() {
+  const supabase = await createSupabaseServerClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  return Boolean(!error && user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL)
+}
 
 export async function POST(request: Request) {
   try {
-    const { supabase, clubId, error: authError } = await getAuthenticatedClub()
-    if (authError || !clubId) {
-      return NextResponse.json({ error: authError || 'No autenticado' }, { status: 401 })
-    }
-
     const parsed = generarEjerciciosSchema.safeParse(await request.json().catch(() => ({})))
     if (!parsed.success) {
       return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
     }
 
+    const { tema, cantidad, global } = parsed.data
+    const esSuperAdmin = await isSuperAdminRequest()
+    const authClub = global && esSuperAdmin
+      ? { supabase: createSupabaseServiceClient(), clubId: null as string | null, error: null }
+      : await getAuthenticatedClub()
+
+    if (authClub.error || (!global && !authClub.clubId)) {
+      return NextResponse.json({ error: authClub.error || 'No autenticado' }, { status: 401 })
+    }
+
+    if (global && !esSuperAdmin) {
+      return NextResponse.json({ error: 'No autorizado para crear ejercicios globales' }, { status: 403 })
+    }
+
     if (!apiKey) {
       return NextResponse.json({ error: 'GEMINI_API_KEY no configurada' }, { status: 503 })
     }
-
-    const { tema, cantidad } = parsed.data
 
     const cant = cantidad;
     const enfoque = tema;
@@ -63,21 +78,24 @@ export async function POST(request: Request) {
     const ejerciciosGenerados = extractJsonArray(responseText)
 
     // Agregamos la capa de seguridad Multiclub
-    const ejerciciosParaGuardar = normalizeGeneratedExercises(ejerciciosGenerados, clubId)
+    const ejerciciosParaGuardar = normalizeGeneratedExercises(ejerciciosGenerados, global ? null : authClub.clubId)
 
     if (ejerciciosParaGuardar.length === 0) {
       return NextResponse.json({ error: 'La IA no devolvió ejercicios válidos' }, { status: 502 })
     }
 
     // Inserción directa en la base de datos
-    const { error } = await supabase.from('ejercicios').insert(ejerciciosParaGuardar)
+    const { error } = await authClub.supabase.from('ejercicios').insert(ejerciciosParaGuardar)
     
-    if (error) throw error
+    if (error) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true, count: ejerciciosParaGuardar.length })
 
   } catch (error) {
     console.error('Error generando ejercicios:', error)
-    return NextResponse.json({ error: 'Fallo al generar' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Fallo al generar'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

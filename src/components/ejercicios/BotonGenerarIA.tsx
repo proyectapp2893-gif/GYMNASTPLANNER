@@ -5,7 +5,12 @@ import { Sparkles, Loader2, X, BrainCircuit, Target, Hash } from 'lucide-react';
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido'
 
-export default function BotonGenerarIA() {
+type BotonGenerarIAProps = {
+  global?: boolean
+  onSuccess?: () => void | Promise<void>
+}
+
+export default function BotonGenerarIA({ global = false, onSuccess }: BotonGenerarIAProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tema, setTema] = useState('');
   const [cantidad, setCantidad] = useState(5);
@@ -22,7 +27,7 @@ export default function BotonGenerarIA() {
       const response = await fetch('/api/ia/generar-ejercicios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tema, cantidad })
+        body: JSON.stringify({ tema, cantidad, global })
       });
 
       // 🔥 LECTURA DEL ERROR REAL 🔥
@@ -37,7 +42,11 @@ export default function BotonGenerarIA() {
       if (data.success) {
         setModalAbierto(false);
         setTema('');
-        window.location.reload(); 
+        if (onSuccess) {
+          await onSuccess();
+        } else {
+          window.location.reload();
+        }
       } else {
         throw new Error("La API no devolvió el estado de éxito.");
       }

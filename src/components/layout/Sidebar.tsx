@@ -1,9 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useClubStore } from '../../../store/useClubStore';
 import { supabase } from '../../lib/supabase';
 import { Home, LayoutDashboard, Users, Dumbbell, ClipboardList, Award, Trophy, Settings, LogOut, BrainCircuit } from 'lucide-react';
+
+const MENU_ITEMS = [
+  { name: 'Inicio', href: '/inicio', icon: Home },
+  { name: 'Dashboard Anual', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Gimnastas', href: '/atletas', icon: Users },
+  { name: 'Ejercicios', href: '/ejercicios', icon: Dumbbell },
+  { name: 'Test Físicos', href: '/evaluaciones', icon: ClipboardList },
+  { name: 'Jueceo Oficial', href: '/puntuacion', icon: Award },
+  { name: 'Resultados', href: '/ranking', icon: Trophy },
+  { name: 'Análisis IA', href: '/analisis', icon: BrainCircuit },
+];
 
 export default function Sidebar() {
   const { nombreClub, logoUrl, clearClubData } = useClubStore();
@@ -13,21 +25,15 @@ export default function Sidebar() {
   const handleCerrarSesion = async () => {
     await supabase.auth.signOut();
     if (clearClubData) clearClubData();
-    router.replace('/');
+    window.location.replace('/');
   };
 
-  if (pathname === '/' || pathname === '/login' || pathname === '/superadmin') return null;
+  useEffect(() => {
+    MENU_ITEMS.forEach((item) => router.prefetch(item.href));
+    router.prefetch('/configuracion');
+  }, [router]);
 
-  const menuItems = [
-    { name: 'Inicio', href: '/inicio', icon: Home },
-    { name: 'Dashboard Anual', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Gimnastas', href: '/atletas', icon: Users },
-    { name: 'Ejercicios', href: '/ejercicios', icon: Dumbbell },
-    { name: 'Test Físicos', href: '/evaluaciones', icon: ClipboardList },
-    { name: 'Jueceo Oficial', href: '/puntuacion', icon: Award },
-    { name: 'Resultados', href: '/ranking', icon: Trophy },
-    { name: 'Análisis IA', href: '/analisis', icon: BrainCircuit }, 
-  ];
+  if (pathname === '/' || pathname === '/login' || pathname === '/superadmin') return null;
 
   return (
     // 🔥 1. Cambiamos de aside a div y usamos h-full para evitar la franja negra
@@ -61,7 +67,7 @@ export default function Sidebar() {
 
       {/* 4. Menú de Navegación Ajustado */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto hide-scrollbar">
-        {menuItems.map((item) => {
+        {MENU_ITEMS.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
           const Icon = item.icon;
           

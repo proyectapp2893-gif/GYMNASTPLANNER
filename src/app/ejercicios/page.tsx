@@ -116,7 +116,7 @@ export default function Ejercicios() {
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <BotonGenerarIA />
+          <BotonGenerarIA onSuccess={cargarEjercicios} />
           <button 
             onClick={() => setModalAbierto(true)}
             className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"

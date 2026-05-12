@@ -110,7 +110,7 @@ export function buildFallbackSession(catalog: CatalogExercise[], objetivo = '') 
   }
 }
 
-export function normalizeGeneratedExercises(raw: unknown, clubId: string) {
+export function normalizeGeneratedExercises(raw: unknown, clubId?: string | null) {
   const items = Array.isArray(raw) ? raw : []
   return items
     .map(item => (isRecord(item) ? item : null))

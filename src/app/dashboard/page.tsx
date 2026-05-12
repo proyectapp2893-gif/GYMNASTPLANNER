@@ -18,6 +18,25 @@ type ConfiguracionPlanificacion = PlanningConfig & {
   horario_semanal?: DiaHorario[] | null
 }
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota'
+
+function getColombiaDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const get = (type: string) => Number(parts.find(part => part.type === type)?.value)
+  return new Date(get('year'), get('month') - 1, get('day'), 12, 0, 0, 0)
+}
+
+function getColombiaDayName(date: Date) {
+  const raw = new Intl.DateTimeFormat('es-CO', { timeZone: COLOMBIA_TIME_ZONE, weekday: 'long' }).format(date)
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
 export default function DashboardPlanificacion() {
   const { clubId } = useClubStore() 
 
@@ -38,7 +57,11 @@ export default function DashboardPlanificacion() {
     const cargarGrupos = async () => {
       if (!clubId) return 
       const { data } = await supabase.from('grupos').select('*').eq('club_id', clubId)
-      if (data) setGrupos(data as GrupoActivo[])
+      if (data) {
+        const gruposActivos = data as GrupoActivo[]
+        setGrupos(gruposActivos)
+        setGrupoSeleccionado(prev => prev || gruposActivos[0] || null)
+      }
     }
     cargarGrupos()
   }, [clubId]) 
@@ -63,7 +86,7 @@ export default function DashboardPlanificacion() {
 
   useEffect(() => {
     if (configuracion && configuracion.fecha_inicio) {
-      const hoy = new Date();
+      const hoy = getColombiaDate();
       const semanaCalculada = calculateCurrentWeek(configuracion, hoy)
       const planSemana = getWeekPlan(configuracion, semanaCalculada)
 
@@ -71,8 +94,7 @@ export default function DashboardPlanificacion() {
       setSemanaActual(`Semana ${semanaCalculada}`);
       setObjetivoFase(planSemana.objetivo);
 
-      const diasSemanaNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-      const nombreDiaHoy = diasSemanaNombres[hoy.getDay()];
+      const nombreDiaHoy = getColombiaDayName(hoy);
       
       const entrenaHoy = configuracion.horario_semanal?.find((d) => d.dia === nombreDiaHoy);
       if (entrenaHoy) {
@@ -101,7 +123,7 @@ export default function DashboardPlanificacion() {
           <label className="text-sm font-bold text-slate-700 pl-2">Grupo Activo:</label>
           <select 
             onChange={(e) => setGrupoSeleccionado(grupos.find(g => g.id === e.target.value) || null)}
-            defaultValue=""
+            value={grupoSeleccionado?.id || ''}
             className="bg-white border border-slate-300 text-indigo-700 text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 block w-full md:w-64 p-2.5 font-bold cursor-pointer shadow-sm outline-none"
           >
             <option value="" disabled>Selecciona un grupo...</option>
@@ -135,6 +157,7 @@ export default function DashboardPlanificacion() {
             semanaNum={semanaNum}
             semanaActual={semanaActual}
             mesocicloActivo={objetivoFase} 
+            diaInicial={diaSeleccionado}
             fechaInicio={configuracion.fecha_inicio}
             horarioPersonalizado={configuracion.horario_semanal}
             onSeleccionarDia={seleccionarDia}

@@ -17,13 +17,15 @@ interface HorarioSemanalProps {
   semanaActual: string
   semanaNum: number
   mesocicloActivo: string
+  diaInicial?: string
   fechaInicio?: string | null
   horarioPersonalizado?: DiaHorario[] | null
   onSeleccionarDia: (dia: string, enfoque: string, fechaExacta: string, hora: string) => void
 }
 
-export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, fechaInicio, horarioPersonalizado, onSeleccionarDia }: HorarioSemanalProps) {
-  const [diaActivo, setDiaActivo] = useState('Lunes')
+export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, diaInicial, fechaInicio, horarioPersonalizado, onSeleccionarDia }: HorarioSemanalProps) {
+  const [diaManual, setDiaManual] = useState<string | null>(null)
+  const diaActivo = diaManual || diaInicial || 'Lunes'
 
   const { inicioSemanaDate, rangoFechas } = useMemo(() => {
     const baseDate = fechaInicio ? new Date(`${fechaInicio}T12:00:00`) : new Date()
@@ -67,7 +69,7 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
   }, [calcularFechaDia, diaActivoValido, horarioPersonalizado, onSeleccionarDia])
 
   const manejarClicDia = (d: DiaHorario) => {
-    setDiaActivo(d.dia)
+    setDiaManual(d.dia)
     const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '')
   }
