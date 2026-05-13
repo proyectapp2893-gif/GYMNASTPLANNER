@@ -60,7 +60,7 @@ export default function LoginPage() {
       if (isLogin) {
         // FLUJO 1: INICIAR SESIÓN
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-        if (authError) throw new Error('Correo o contraseña incorrectos.');
+        if (authError) throw new Error(authError.message || 'Correo o contraseña incorrectos.');
 
         if (authData.user) {
           
