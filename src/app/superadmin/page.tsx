@@ -77,6 +77,7 @@ export default function SuperAdminPage() {
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '' });
+  const [modalPassword, setModalPassword] = useState<{ userId: string; email: string; password: string; guardando: boolean } | null>(null);
 
   const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com'; 
 
@@ -164,21 +165,35 @@ export default function SuperAdminPage() {
     }
   };
 
-  const cambiarPasswordUsuario = async (userId: string) => {
-    const password = window.prompt('Nueva contraseña para este usuario (mínimo 8 caracteres):');
-    if (!password) return;
+  const abrirModalPassword = (userId: string, email: string) => {
+    setModalPassword({ userId, email, password: '', guardando: false });
+  };
+
+  const cambiarPasswordUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalPassword) return;
+
+    const password = modalPassword.password.trim();
+    if (password.length < 8) {
+      mostrarAviso('La contraseña debe tener mínimo 8 caracteres.', 'error');
+      return;
+    }
+
+    setModalPassword({ ...modalPassword, guardando: true });
 
     try {
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'password', userId, password }),
+        body: JSON.stringify({ action: 'password', userId: modalPassword.userId, password }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo cambiar la contraseña');
+      setModalPassword(null);
       mostrarAviso('Contraseña actualizada.', 'exito');
     } catch (error) {
       mostrarAviso(getErrorMessage(error), 'error');
+      setModalPassword(prev => prev ? { ...prev, guardando: false } : prev);
     }
   };
 
@@ -658,6 +673,46 @@ export default function SuperAdminPage() {
         </div>
       )}
 
+      {modalPassword && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={cambiarPasswordUsuario} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-700 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-white">Cambiar Contraseña</h2>
+                <p className="text-sm text-slate-400 mt-1">{modalPassword.email}</p>
+              </div>
+              <button type="button" onClick={() => setModalPassword(null)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nueva contraseña</label>
+              <input
+                autoFocus
+                required
+                type="password"
+                minLength={8}
+                value={modalPassword.password}
+                onChange={(e) => setModalPassword({ ...modalPassword, password: e.target.value })}
+                className="w-full p-3 bg-slate-950 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold"
+              />
+              <p className="text-xs text-slate-500 mt-2">Mínimo 8 caracteres.</p>
+            </div>
+
+            <div className="p-6 border-t border-slate-700 bg-slate-950/40 flex justify-end gap-3">
+              <button type="button" onClick={() => setModalPassword(null)} className="px-5 py-3 bg-slate-800 text-slate-300 hover:text-white rounded-xl font-bold transition-colors">
+                Cancelar
+              </button>
+              <button type="submit" disabled={modalPassword.guardando} className="px-5 py-3 bg-indigo-600 text-white hover:bg-indigo-500 rounded-xl font-black transition-colors flex items-center gap-2 disabled:opacity-60">
+                {modalPassword.guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <KeyRound className="w-5 h-5" />}
+                Guardar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
@@ -812,7 +867,7 @@ export default function SuperAdminPage() {
                           </td>
                           <td className="p-4">
                             <div className="flex justify-end gap-2">
-                              <button onClick={() => cambiarPasswordUsuario(usuario.id)} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                              <button onClick={() => abrirModalPassword(usuario.id, usuario.email)} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
                                 <KeyRound className="w-3 h-3" /> Clave
                               </button>
                               <button onClick={() => cambiarEstadoUsuario(usuario.id, usuario.disabled)} className={`px-3 py-2 rounded-lg text-xs font-bold ${usuario.disabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}>
