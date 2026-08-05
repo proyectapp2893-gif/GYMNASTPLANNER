@@ -3,9 +3,9 @@ import { z } from 'zod'
 import { buildFallbackGeneratedExercises, extractJsonArray, generateTextWithRetry, normalizeGeneratedExercises } from '../../../../lib/ai-helpers'
 import { generateGeminiTextRest } from '../../../../lib/gemini-rest'
 import { createSupabaseServerClient, createSupabaseServiceClient, getAuthenticatedClub } from '../../../../lib/supabase-server'
+import { isSuperAdminEmail } from '../../../../lib/admin'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
 
 const generarEjerciciosSchema = z.object({
   tema: z.string().trim().min(3).max(120),
@@ -16,7 +16,7 @@ const generarEjerciciosSchema = z.object({
 async function isSuperAdminRequest() {
   const supabase = await createSupabaseServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  return Boolean(!error && user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL)
+  return Boolean(!error && isSuperAdminEmail(user?.email))
 }
 
 export async function POST(request: Request) {

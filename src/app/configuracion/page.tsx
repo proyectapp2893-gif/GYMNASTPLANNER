@@ -6,6 +6,7 @@ import { useClubStore } from '../../../store/useClubStore'
 import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2 } from 'lucide-react'
 import GestorInventario from '../../components/dashboard/GestorInventario' 
 import type { Grupo } from '../../lib/types'
+import Image from 'next/image'
 
 type CompetenciaSecundaria = { nombre: string; fecha: string }
 type DiaHorario = { dia: string; enfoque: string; aparatos: string; lugar: string; hora: string }
@@ -13,7 +14,7 @@ type DiaHorario = { dia: string; enfoque: string; aparatos: string; lugar: strin
 const HORARIO_BASE: DiaHorario[] = [
   { dia: 'Lunes', enfoque: 'Prep. Física Gral + Salto y Barras', aparatos: 'Salto, Barras', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
   { dia: 'Martes', enfoque: 'Flexibilidad + Viga y Suelo', aparatos: 'Viga, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
-  { dia: 'Miércoles', enfoque: 'Coreografía, Ballet y Prevención', aparatos: 'Suelo, Danza', lugar: 'Salón de Danza', hora: '4:00 PM - 6:00 PM' },
+  { dia: 'Miércoles', enfoque: 'Coreografía, Ballet y Prevención', aparatos: 'Danza, Prevención', lugar: 'Salón de Danza', hora: '4:00 PM - 6:00 PM' },
   { dia: 'Jueves', enfoque: 'Física Especial + Salto y Viga', aparatos: 'Salto, Viga', lugar: 'Pista Atlética / Gimnasio', hora: '4:00 PM - 7:00 PM' },
   { dia: 'Viernes', enfoque: 'Barras, Suelo y Acrobacia', aparatos: 'Barras, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
   { dia: 'Sábado', enfoque: 'Control Técnico y Repaso Rutinas', aparatos: 'Todos', lugar: 'Gimnasio Principal', hora: '8:00 AM - 12:00 PM' }
@@ -271,7 +272,7 @@ export default function ConfiguracionGeneral() {
             <div className="flex flex-col items-center gap-4">
               <div className="w-32 h-32 rounded-full border-4 border-slate-100 flex items-center justify-center bg-slate-50 overflow-hidden relative shadow-sm group">
                  {nuevoLogoClub && nuevoLogoClub !== '/default-club-logo.png' ? (
-                    <img src={nuevoLogoClub} alt="Preview Logo" className="w-full h-full object-cover" />
+                    <Image src={nuevoLogoClub} alt="Vista previa del logo" fill unoptimized className="object-cover" />
                  ) : (
                     <Upload className="text-slate-300 w-10 h-10" />
                  )}

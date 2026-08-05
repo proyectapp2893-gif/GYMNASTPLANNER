@@ -101,14 +101,18 @@ export default function TestFisicos() {
         ...resultados,
         analisis,
       }
-      // 🔥 NUEVO: Agregamos club_id al registro de la evaluación
-      const { error } = await supabase.from('evaluaciones_fisicas').insert([{
-        atleta_id: atletaSeleccionada.id,
-        fecha: fechaTest,
-        resultados: resultadosNormalizados,
-        club_id: clubId 
-      }])
-      if (error) throw error
+      const response = await fetch('/api/evaluaciones-fisicas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          atletaId: atletaSeleccionada.id,
+          grupoId: grupoSeleccionado,
+          fecha: fechaTest,
+          resultados: resultadosNormalizados,
+        }),
+      })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Error al guardar la evaluación')
       
       mostrarNotificacion('¡Resultados guardados en el historial!', 'exito')
       setResultados(RESULTADOS_INICIALES)
@@ -129,8 +133,11 @@ export default function TestFisicos() {
     if (!confirm('¿Estás seguro de eliminar este test? Se borrará permanentemente de la base de datos.')) return
     
     try {
-      const { error } = await supabase.from('evaluaciones_fisicas').delete().eq('id', testId).eq('club_id', clubId)
-      if (error) throw error
+      const response = await fetch(`/api/evaluaciones-fisicas?id=${encodeURIComponent(testId)}`, {
+        method: 'DELETE',
+      })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Error al eliminar la evaluación')
       
       mostrarNotificacion('Evaluación eliminada correctamente', 'exito')
       

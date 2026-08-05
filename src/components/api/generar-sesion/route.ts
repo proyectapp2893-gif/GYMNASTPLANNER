@@ -189,7 +189,11 @@ export async function POST(request: Request) {
     `
     try {
       const responseText = await generateTextWithRetry(() => generateGeminiText(prompt))
-      return NextResponse.json(sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto))
+      return NextResponse.json(sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto, {
+        objetivo,
+        competenciaCercana: alertaFogueo,
+        diasEntrenamiento,
+      }))
     } catch (error) {
       console.error('Fallback sesion IA:', error)
       return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo))

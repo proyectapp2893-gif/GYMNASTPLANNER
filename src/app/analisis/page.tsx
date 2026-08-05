@@ -6,6 +6,7 @@ import { BrainCircuit, TrendingUp, Target, Download, Activity, AlertTriangle, Ch
 import { useClubStore } from '../../../store/useClubStore'
 import { supabase } from '../../lib/supabase'
 import type { Competencia, Puntuacion } from '../../lib/types'
+import Image from 'next/image'
 
 const APARATOS = ['Salto', 'Barras', 'Viga', 'Suelo'] as const
 type Aparato = typeof APARATOS[number]
@@ -271,7 +272,7 @@ export default function AnalisisPremium() {
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
             {logoUrl && logoUrl !== '/default-club-logo.png' ? (
-               <img src={logoUrl} alt="Logo" className="w-14 h-14 object-contain" />
+               <Image src={logoUrl} alt="Logo del club" width={56} height={56} unoptimized className="h-14 w-14 object-contain" />
             ) : (
                <div className="w-14 h-14 bg-indigo-600 rounded-xl flex items-center justify-center text-white"><Dumbbell size={28} /></div>
             )}

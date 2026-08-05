@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '../../../../lib/supabase-server'
+import { isSuperAdminEmail } from '../../../../lib/admin'
 
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 type GeminiModel = {
@@ -22,7 +22,7 @@ type GeminiGenerateResponse = {
 async function ensureSuperAdmin() {
   const supabase = await createSupabaseServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-  return Boolean(!error && user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL)
+  return Boolean(!error && isSuperAdminEmail(user?.email))
 }
 
 export async function GET() {

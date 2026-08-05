@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createSupabaseServerClient, createSupabaseServiceClient } from '../../../../lib/supabase-server'
-
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim().toLowerCase()
+import { isSuperAdminEmail } from '../../../../lib/admin'
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -25,7 +24,7 @@ async function ensureSuperAdmin() {
   const supabase = await createSupabaseServerClient()
   const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (error || !user || user.email?.trim().toLowerCase() !== SUPER_ADMIN_EMAIL) {
+  if (error || !user || !isSuperAdminEmail(user.email)) {
     return { allowed: false, error: 'No autorizado' }
   }
 
@@ -120,7 +119,7 @@ export async function PATCH(request: NextRequest) {
   if (action === 'disable') {
     const { data, error } = await service.auth.admin.getUserById(userId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (data.user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+    if (isSuperAdminEmail(data.user?.email)) {
       return NextResponse.json({ error: 'No se puede desactivar la cuenta superadmin' }, { status: 400 })
     }
   }
@@ -166,7 +165,7 @@ export async function DELETE(request: NextRequest) {
   const service = createSupabaseServiceClient()
   const { data: target, error: targetError } = await service.auth.admin.getUserById(parsedUserId.data)
   if (targetError) return NextResponse.json({ error: targetError.message }, { status: 500 })
-  if (target.user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL) {
+  if (isSuperAdminEmail(target.user?.email)) {
     return NextResponse.json({ error: 'No se puede eliminar la cuenta superadmin' }, { status: 400 })
   }
 

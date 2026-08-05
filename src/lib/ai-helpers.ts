@@ -16,7 +16,14 @@ type Dose = {
   desarrollo: string
 }
 
+type SessionSafetyContext = {
+  objetivo?: string
+  competenciaCercana?: boolean
+  diasEntrenamiento?: number
+}
+
 const SESSION_KEYS = ['calentamiento', 'prep-fisica', 'tecnico', 'rutinas', 'flexibilidad', 'cierre'] as const
+type SessionKey = typeof SESSION_KEYS[number]
 
 const DEFAULT_DOSE: Dose = {
   avanzado: 'Carga moderada controlada',
@@ -73,7 +80,7 @@ export function limitCatalogForPrompt(catalog: CatalogExercise[], enfoque = '', 
     .map(item => item.exercise)
 }
 
-export function sanitizeSessionResponse(raw: unknown, catalog: CatalogExercise[]) {
+export function sanitizeSessionResponse(raw: unknown, catalog: CatalogExercise[], safety: SessionSafetyContext = {}) {
   const allowedIds = new Set(catalog.map(exercise => exercise.id))
   const source = isRecord(raw) ? raw : {}
   const sanitized: Record<string, Array<{ id: string; dosificacion: Dose }>> = {}
@@ -83,22 +90,43 @@ export function sanitizeSessionResponse(raw: unknown, catalog: CatalogExercise[]
     const items = Array.isArray(value) ? value : []
 
     sanitized[key] = items
-      .map(item => normalizeSessionItem(item))
+      .map(item => normalizeSessionItem(item, safety))
       .filter((item): item is { id: string; dosificacion: Dose } => Boolean(item && allowedIds.has(item.id)))
-      .slice(0, 12)
+      .slice(0, getMaxItemsForBlock(key, safety))
   })
 
   return sanitized
 }
 
-export function buildFallbackSession(catalog: CatalogExercise[], objetivo = '') {
+export function buildFallbackSession(catalog: CatalogExercise[], objetivo = '', enfoque = '', tipoSesion = '') {
   const fase = normalize(objetivo)
+  const focus = normalize(enfoque)
+  const isDance = tipoSesion === 'dance_choreography' || ['coreografia', 'ballet', 'danza'].some(term => focus.includes(term))
   const competitive = fase.includes('compet') || fase.includes('pulimiento')
   const pick = (matcher: (exercise: CatalogExercise) => boolean, max: number) =>
     catalog.filter(matcher).slice(0, max).map(exercise => ({ id: exercise.id, dosificacion: fallbackDose(fase) }))
 
   const byCategory = (category: string) => (exercise: CatalogExercise) => normalize(exercise.categoria || '').includes(category)
   const technical = (exercise: CatalogExercise) => normalize(exercise.categoria || '').includes('tecn')
+  const dance = (exercise: CatalogExercise) => {
+    const text = normalize(`${exercise.nombre || ''} ${exercise.categoria || ''} ${exercise.descripcion_corta || ''}`)
+    return ['ballet', 'danza', 'coreografia', 'expresion', 'musicalidad', 'releve'].some(term => text.includes(term))
+  }
+  const prevention = (exercise: CatalogExercise) => {
+    const text = normalize(`${exercise.nombre || ''} ${exercise.categoria || ''} ${exercise.descripcion_corta || ''}`)
+    return ['prevencion', 'estabilidad', 'alineacion', 'tobillo', 'movilidad'].some(term => text.includes(term))
+  }
+
+  if (isDance) {
+    return {
+      calentamiento: pick(byCategory('calent'), 4),
+      'prep-fisica': pick(exercise => prevention(exercise) || byCategory('prep')(exercise), 5),
+      tecnico: pick(dance, 6),
+      rutinas: pick(dance, 5),
+      flexibilidad: pick(byCategory('flex'), 3),
+      cierre: pick(exercise => normalize(exercise.categoria || '').includes('cierre') || normalize(exercise.categoria || '').includes('calma'), 2),
+    }
+  }
 
   return {
     calentamiento: pick(byCategory('calent'), 4),
@@ -180,13 +208,58 @@ export function normalizeSingleDose(raw: unknown) {
   }
 }
 
-function normalizeSessionItem(item: unknown) {
-  if (typeof item === 'string') return { id: item, dosificacion: DEFAULT_DOSE }
+function normalizeSessionItem(item: unknown, safety: SessionSafetyContext) {
+  if (typeof item === 'string') return { id: item, dosificacion: sanitizeDoseForSafety(DEFAULT_DOSE, safety) }
   if (!isRecord(item) || typeof item.id !== 'string') return null
   return {
     id: item.id,
-    dosificacion: normalizeSingleDose(item.dosificacion),
+    dosificacion: sanitizeDoseForSafety(normalizeSingleDose(item.dosificacion), safety),
   }
+}
+
+function getMaxItemsForBlock(key: SessionKey, safety: SessionSafetyContext) {
+  const fase = normalize(safety.objetivo || '')
+  const competitive = Boolean(safety.competenciaCercana || fase.includes('compet') || fase.includes('pulimiento'))
+  const weeklyDays = Number(safety.diasEntrenamiento || 6)
+
+  if (competitive) {
+    if (key === 'prep-fisica') return 2
+    if (key === 'tecnico' || key === 'rutinas') return 8
+  }
+
+  if (weeklyDays <= 3 && key === 'prep-fisica') return 3
+  if (weeklyDays <= 3 && key === 'tecnico') return 5
+
+  return 12
+}
+
+function sanitizeDoseForSafety(dose: Dose, safety: SessionSafetyContext): Dose {
+  const fase = normalize(safety.objetivo || '')
+  const competitive = Boolean(safety.competenciaCercana || fase.includes('compet') || fase.includes('pulimiento'))
+  if (!competitive) return dose
+
+  return {
+    avanzado: sanitizeCompetitiveDoseText(dose.avanzado, '2-3 series tecnicas, intensidad baja-media, descanso amplio'),
+    base: sanitizeCompetitiveDoseText(dose.base, '2 series tecnicas, intensidad baja, descanso amplio'),
+    desarrollo: sanitizeCompetitiveDoseText(dose.desarrollo, '1-2 series asistidas, calidad tecnica, descanso amplio'),
+  }
+}
+
+function sanitizeCompetitiveDoseText(value: string, fallback: string) {
+  const normalized = normalize(value)
+  const unsafe = [
+    'hiit',
+    'fallo',
+    'maximo',
+    'maxima',
+    'maximos',
+    'amrap',
+    'tabata',
+    'sin descanso',
+    'agotamiento',
+  ]
+
+  return unsafe.some(term => normalized.includes(term)) ? fallback : value
 }
 
 function fallbackDose(fase: string): Dose {

@@ -209,20 +209,28 @@ export default function Puntuacion() {
 
   const guardarPuntuaciones = async () => {
     if (!atletaSeleccionada || !competenciaActiva) return
+    if (!clubId) return mostrarToast('Error: No se ha detectado el club activo', 'error')
     setGuardando(true)
 
     try {
-      const puntuacionesArray: Puntuacion[] = aparatos.map(aparato => ({
-        competencia_id: competenciaActiva.id,
-        atleta_id: atletaSeleccionada.id,
-        aparato: aparato,
-        nota_d: parseFloat(notas[aparato].d) || 0,
-        nota_e: parseFloat(notas[aparato].e) || 0,
-        nota_final: calcularNotaFinal(aparato)
+      const puntuacionesArray = aparatos.map(aparato => ({
+        aparato,
+        notaD: parseFloat(notas[aparato].d) || 0,
+        notaE: parseFloat(notas[aparato].e) || 0,
+        notaFinal: calcularNotaFinal(aparato)
       }))
 
-      const { error } = await supabase.from('puntuaciones').upsert(puntuacionesArray, { onConflict: 'competencia_id, atleta_id, aparato' })
-      if (error) throw error
+      const response = await fetch('/api/puntuaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          competenciaId: competenciaActiva.id,
+          atletaId: atletaSeleccionada.id,
+          puntuaciones: puntuacionesArray,
+        }),
+      })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Error al guardar las puntuaciones')
 
       mostrarToast('¡Puntuaciones guardadas con éxito! 🏆', 'exito')
     } catch (error) {

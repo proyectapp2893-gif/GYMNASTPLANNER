@@ -1,7 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSuperAdminEmail } from './lib/admin'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -42,7 +43,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const esSuperadmin = user?.email?.toLowerCase() === 'gymnastplanner@gmail.com'
+  const esSuperadmin = isSuperAdminEmail(user?.email)
 
   // 🚪 REGLA 1: Si no hay sesión y NO está en el login (/), mandarlo al login
   if (!user && request.nextUrl.pathname !== '/') {

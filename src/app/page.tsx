@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 import { useClubStore } from '../../store/useClubStore'; // 🔥 Ruta corregida
+import { isSuperAdminEmailClient } from '../lib/admin-client';
 import { Mail, Lock, Loader2, AlertCircle, Building2, User, CheckCircle2 } from 'lucide-react';
+import Image from 'next/image';
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido';
 
@@ -21,9 +23,6 @@ export default function LoginPage() {
   
   const router = useRouter();
   const { setClubData } = useClubStore();
-
-  // 🔥 TU LLAVE MAESTRA
-  const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com';
 
   const enviarRecuperacion = async () => {
     setError(null);
@@ -65,7 +64,7 @@ export default function LoginPage() {
         if (authData.user) {
           
           // 🔥 MAGIA: ENRUTAMIENTO INTELIGENTE POR ROLES
-          if (authData.user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+          if (isSuperAdminEmailClient(authData.user.email)) {
             router.refresh(); // Despertar al servidor
             router.push('/superadmin');
             return; 
@@ -155,11 +154,7 @@ export default function LoginPage() {
           
           {/* Aumentamos el ancho considerablemente (w-72 a w-80) y dejamos altura automática para no deformar el rectángulo */}
           <div className="w-72 sm:w-80 relative flex items-center justify-center mx-auto">
-            <img 
-              src="/logo.png" 
-              alt="Logo GymnastPlanner" 
-              className="w-full h-auto object-contain drop-shadow-md" 
-            />
+            <Image src="/logo.png" alt="Logo GymnastPlanner" width={384} height={345} priority className="h-auto w-full object-contain drop-shadow-md" />
           </div>
 
         </div>

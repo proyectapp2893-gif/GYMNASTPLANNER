@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Calendar, Clock, MapPin, Activity } from 'lucide-react'
+import { getSessionDayProfile } from '../../lib/session-focus'
 
 const DIAS_OFFSET: Record<string, number> = { 'Lunes': 0, 'Martes': 1, 'Miércoles': 2, 'Jueves': 3, 'Viernes': 4, 'Sábado': 5, 'Domingo': 6 }
 
@@ -20,7 +21,7 @@ interface HorarioSemanalProps {
   diaInicial?: string
   fechaInicio?: string | null
   horarioPersonalizado?: DiaHorario[] | null
-  onSeleccionarDia: (dia: string, enfoque: string, fechaExacta: string, hora: string) => void
+  onSeleccionarDia: (dia: string, enfoque: string, fechaExacta: string, hora: string, aparatos: string) => void
 }
 
 export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, diaInicial, fechaInicio, horarioPersonalizado, onSeleccionarDia }: HorarioSemanalProps) {
@@ -64,14 +65,14 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
     if (horarioPersonalizado && horarioPersonalizado.length > 0) {
       const d = horarioPersonalizado.find((x) => x.dia === diaActivoValido) || horarioPersonalizado[0]
       const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '')
+      onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '', d.aparatos || '')
     }
   }, [calcularFechaDia, diaActivoValido, horarioPersonalizado, onSeleccionarDia])
 
   const manejarClicDia = (d: DiaHorario) => {
     setDiaManual(d.dia)
     const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-    onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '')
+    onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '', d.aparatos || '')
   }
 
   const colores = ['bg-blue-50 text-blue-700', 'bg-emerald-50 text-emerald-700', 'bg-purple-50 text-purple-700', 'bg-rose-50 text-rose-700', 'bg-amber-50 text-amber-700', 'bg-slate-100 text-slate-800']
@@ -100,6 +101,7 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
       {/* 🔥 MAGIA VISUAL: py-4, px-2 y -mx-2 le dan "aire" a las tarjetas para que no se corten los bordes al crecer 🔥 */}
       <div className="flex flex-row overflow-x-auto gap-3 md:gap-4 py-4 px-2 -mx-2 snap-x hide-scrollbar w-full items-stretch">
         {horarioPersonalizado.map((dia, idx) => {
+          const perfilDia = getSessionDayProfile(dia.enfoque || '', dia.aparatos || '')
           const colorClass = colores[idx % colores.length]
           const isActivo = diaActivoValido === dia.dia
           
@@ -134,7 +136,7 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
 
               {/* ETIQUETAS DE APARATOS */}
               <div className="flex flex-wrap gap-1.5 mb-3 md:mb-4">
-                {(dia.aparatos || 'General').split(',').map((aparato: string, index: number) => (
+                {perfilDia.displayTags.map((aparato, index) => (
                   <span key={index} className={`px-1.5 md:px-2 py-1 border rounded-md text-[8px] md:text-[9px] font-extrabold uppercase tracking-widest truncate max-w-full ${isActivo ? 'bg-white/90 border-indigo-200 text-indigo-700' : 'bg-slate-200/50 border-slate-200 text-slate-500'}`}>
                     {aparato.trim()}
                   </span>

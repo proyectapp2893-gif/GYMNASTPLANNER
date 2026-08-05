@@ -1,0 +1,12 @@
+.next
+.next-playwright
+node_modules
+test-results
+coverage
+playwright-report
+supabase/.temp
+.git
+.DS_Store
+*.tsbuildinfo
+*.log
+.env*

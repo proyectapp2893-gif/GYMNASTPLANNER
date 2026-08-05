@@ -28,6 +28,8 @@ const aiRequestSchema = z.object({
   semana: z.string().max(80).optional(),
   dia: z.string().max(40).optional(),
   enfoqueDia: z.string().max(160).optional(),
+  aparatosDia: z.string().max(160).optional(),
+  tipoSesion: z.enum(['dance_choreography', 'apparatus', 'physical_prevention', 'mixed']).optional(),
   horario: z.string().max(80).optional(),
   isSingle: z.boolean().optional(),
   ejercicioUnico: z.unknown().optional(),
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { grupoId, nivel, objetivo, semana, enfoqueDia, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual } = parsed.data
+    const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual } = parsed.data
     const proximidadCompetencia = getCompetitionProximityForDate(
       fechaSesionActual,
       competenciasSecundarias.map(comp => comp.fecha)
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
 
     const { data: clubData } = await supabase
       .from('clubs')
-      .select('acceso_biblioteca_elite')
+      .select('acceso_biblioteca_elite, inventario')
       .eq('id', clubId)
       .single()
 
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
 
     let contextoTestFisicos = "No hay evaluaciones físicas previas."
     // 🔥 NUEVO: Variable base para el inventario
-    let contextoInventario = "El club tiene equipamiento completo estándar de gimnasia artística." 
+    let contextoInventario = buildInventoryContext(clubData?.inventario)
     
     if (grupoId) {
       const { data: grupoAutorizado } = await supabase
@@ -113,14 +115,13 @@ export async function POST(request: Request) {
       }
 
       // 🔥 NUEVO: Lógica de consulta del Inventario en Supabase
-      const { data: config } = await supabase.from('configuracion_grupos').select('inventario').eq('grupo_id', grupoId).single()
-      if (config && config.inventario && config.inventario.length > 0) {
-        contextoInventario = `ATENCIÓN: El club tiene un INVENTARIO LIMITADO. Solo puedes utilizar el siguiente equipamiento para diseñar o adaptar los ejercicios: [${config.inventario.join(', ')}]. ESTÁ ESTRICTAMENTE PROHIBIDO sugerir ejercicios que requieran aparatos o materiales que no estén en esta lista.`
-      }
+      const { data: config } = await supabase.from('configuracion_grupos').select('inventario').eq('grupo_id', grupoId).maybeSingle()
+      const inventarioCombinado = mergeInventory(clubData?.inventario, config?.inventario)
+      contextoInventario = buildInventoryContext(inventarioCombinado)
     }
 
     if (!apiKey) {
-      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo))
+      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo, enfoqueDia, tipoSesion))
     }
 
     // 🔥 MODO FRANCOTIRADOR
@@ -172,6 +173,7 @@ export async function POST(request: Request) {
 
       CONTEXTO Y RESTRICCIONES:
       - Nivel: ${nivel} | Fase: ${objetivo} | Semana: ${semana || 'Sin especificar'} | Horario: ${horario} | Enfoque: ${enfoqueDia}
+      - Tipo pedagógico: ${tipoSesion || 'mixto'} | Aparatos técnicos explícitos: ${aparatosDia || 'ninguno'}
       - Frecuencia semanal: ${diasEntrenamiento} dias
       ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: estamos en descarga/taper. Reduce preparacion fisica pesada y prioriza rutinas, tecnica limpia, recuperacion y confianza.` : ''}
       ${contextoInventario}
@@ -184,23 +186,29 @@ export async function POST(request: Request) {
       - Si la fase es competitiva, precompetitiva o hay torneo cercano, evita HIIT, maximos, fatiga al fallo y volumen pesado.
       - No generes una sesión imposible para el horario indicado.
       - Prioriza técnica, rutinas y recuperación cuando el objetivo incluya competencia o pulimiento.
+      - Si el tipo es dance_choreography, "Suelo" describe la superficie y NO un aparato técnico: no propongas acrobacia, pasadas ni rutinas de aparato. Usa "tecnico" para ballet y "rutinas" para frases coreográficas, musicalidad, expresión y enlaces; integra prevención de pie, tobillo, rodilla, cadera y postura.
 
       Devuelve ÚNICA Y EXCLUSIVAMENTE un JSON válido con esta estructura:
       {
         "calentamiento": [{"id": "id", "dosificacion": {"avanzado": "texto", "base": "texto", "desarrollo": "texto"}}],
         "prep-fisica": [{"id": "id", "dosificacion": {"avanzado": "texto", "base": "texto", "desarrollo": "texto"}}],
         "tecnico": [{"id": "id", "dosificacion": {"avanzado": "texto", "base": "texto", "desarrollo": "texto"}}],
+        "rutinas": [{"id": "id", "dosificacion": {"avanzado": "texto", "base": "texto", "desarrollo": "texto"}}],
         "flexibilidad": [{"id": "id", "dosificacion": {"avanzado": "texto", "base": "texto", "desarrollo": "texto"}}],
         "cierre": []
       }
     `
     try {
       const responseText = await generateTextWithRetry(() => generateGeminiText(prompt))
-      const sanitized = sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto)
+      const sanitized = sanitizeSessionResponse(extractJsonObject(responseText), catalogoCompleto, {
+        objetivo,
+        competenciaCercana: proximidadCompetencia.isNear,
+        diasEntrenamiento,
+      })
       return NextResponse.json(sanitized)
     } catch (error) {
       console.error('Fallback sesion IA:', error)
-      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo))
+      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo, enfoqueDia, tipoSesion))
     }
 
   } catch (error) {
@@ -211,4 +219,25 @@ export async function POST(request: Request) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeInventory(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function mergeInventory(...values: unknown[]) {
+  return Array.from(new Set(values.flatMap(normalizeInventory)))
+}
+
+function buildInventoryContext(value: unknown) {
+  const inventario = normalizeInventory(value)
+  if (inventario.length === 0) {
+    return "El club tiene equipamiento completo estándar de gimnasia artística."
+  }
+
+  return `ATENCIÓN: El club tiene un INVENTARIO LIMITADO. Solo puedes utilizar el siguiente equipamiento para diseñar o adaptar los ejercicios: [${inventario.join(', ')}]. ESTÁ ESTRICTAMENTE PROHIBIDO sugerir ejercicios que requieran aparatos o materiales que no estén en esta lista.`
 }

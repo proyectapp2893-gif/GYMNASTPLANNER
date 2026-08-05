@@ -1,0 +1,3 @@
+import {z} from 'zod'
+export const aiSuggestionSchema=z.object({type:z.enum(['sesion_individual','adaptacion_restriccion','progresion','regresion','correctivo','resumen_avance','prioridades_semana','retroalimentacion','informe']),context:z.record(z.string(),z.unknown()),originalProposal:z.record(z.string(),z.unknown()),editedProposal:z.record(z.string(),z.unknown()).nullable(),rationale:z.string().trim().min(10).max(3000),model:z.string().trim().max(100).nullable()})
+export const aiDecisionSchema=z.object({decision:z.enum(['aprobar','rechazar']),editedProposal:z.record(z.string(),z.unknown()).nullable(),reason:z.string().trim().min(3).max(1000)})

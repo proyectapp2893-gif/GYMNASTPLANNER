@@ -6,6 +6,8 @@ import { GripVertical, Flame, Dumbbell, Activity, ShieldCheck, Wind, Loader2, Ar
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
 import { getCompetitionProximityForDate, getSessionTimeDistribution } from '../../lib/sports-planning'
+import { getSessionDayProfile } from '../../lib/session-focus'
+import Image from 'next/image'
 
 const parsearFecha = (fechaStr: string) => {
   if (!fechaStr) return null;
@@ -60,6 +62,7 @@ interface ConstructorSesionProps {
   enfoqueDia?: string
   fechaExactaDia?: string
   horaDia?: string
+  aparatosDia?: string
 }
 
 interface CompetenciaPlanificada {
@@ -116,7 +119,8 @@ export default function ConstructorSesion({
   diaActivo = 'Lunes',
   enfoqueDia = 'Entrenamiento General',
   fechaExactaDia = '',
-  horaDia = ''
+  horaDia = '',
+  aparatosDia = ''
 }: ConstructorSesionProps) {
   
   const { clubId, nombreClub: nombreClubGlobal, logoUrl } = useClubStore()
@@ -160,20 +164,14 @@ export default function ConstructorSesion({
     if (nombreClubGlobal && nombreClubGlobal !== 'Cargando...') setNombreClub(nombreClubGlobal)
   }, [nombreClubGlobal])
 
-  const [nombreAparato1, nombreAparato2] = useMemo(() => {
-    if (!enfoqueDia) return ['Aparato Principal', 'Aparato Secundario'];
-    const texto = enfoqueDia.toLowerCase();
-    const aparatosDetectados = [];
-    
-    if (texto.includes('salto')) aparatosDetectados.push('Salto');
-    if (texto.includes('barras') || texto.includes('asimétricas')) aparatosDetectados.push('Barras Asimétricas');
-    if (texto.includes('viga') || texto.includes('equilibrio')) aparatosDetectados.push('Viga de Equilibrio');
-    if (texto.includes('suelo') || texto.includes('piso') || texto.includes('manos libres')) aparatosDetectados.push('Suelo');
+  const perfilDia = useMemo(() => getSessionDayProfile(enfoqueDia, aparatosDia), [aparatosDia, enfoqueDia])
 
-    if (aparatosDetectados.length >= 2) return [aparatosDetectados[0], aparatosDetectados[1]];
-    if (aparatosDetectados.length === 1) return [aparatosDetectados[0], 'Preparación Específica / Básicos'];
+  const [nombreAparato1, nombreAparato2] = useMemo(() => {
+    const aparatosDetectados = perfilDia.apparatus
+    if (aparatosDetectados.length >= 2) return [aparatosDetectados[0], aparatosDetectados[1]]
+    if (aparatosDetectados.length === 1) return [aparatosDetectados[0], 'Preparación Específica / Básicos']
     return ['Aparato Principal', 'Aparato Secundario / Básicos'];
-  }, [enfoqueDia]);
+  }, [perfilDia.apparatus]);
 
   const tiemposCalculados = useMemo(() => {
     const fechaSesion = parsearFecha(fechaExactaDia)
@@ -181,8 +179,9 @@ export default function ConstructorSesion({
       fechaSesion,
       [fechaCompetenciaPrincipal, ...competenciasSecundarias.map(comp => comp.fecha)]
     )
+    if (perfilDia.kind === 'dance_choreography' || perfilDia.kind === 'physical_prevention') return perfilDia.blockTimes
     return getSessionTimeDistribution(objetivoFase, proximidad.isNear)
-  }, [competenciasSecundarias, fechaCompetenciaPrincipal, fechaExactaDia, objetivoFase]);
+  }, [competenciasSecundarias, fechaCompetenciaPrincipal, fechaExactaDia, objetivoFase, perfilDia]);
 
   const bloquesDefinicion = useMemo(() => [
     { 
@@ -193,25 +192,25 @@ export default function ConstructorSesion({
       ]
     },
     { 
-      id: 'prep_fisica', titulo: '2. Prep. Física (PF)', tiempo: `${tiemposCalculados.prep_fisica} min`, color: 'border-rose-300 bg-rose-50', icon: Dumbbell, textColor: 'text-rose-600',
+      id: 'prep_fisica', titulo: perfilDia.kind === 'dance_choreography' ? '2. Prevención y PF' : '2. Prep. Física (PF)', tiempo: `${tiemposCalculados.prep_fisica} min`, color: 'border-rose-300 bg-rose-50', icon: Dumbbell, textColor: 'text-rose-600',
       subdivisiones: [
-        { id: 'prep_fisica_core', nombre: 'Zona Media (Core) y Estabilizadores' },
-        { id: 'prep_fisica_superior', nombre: 'Tren Superior (Fuerza / Empuje)' },
-        { id: 'prep_fisica_inferior', nombre: 'Tren Inferior (Pliometría / Potencia)' }
+        { id: 'prep_fisica_core', nombre: perfilDia.kind === 'dance_choreography' ? 'Core, alineación y control postural' : 'Zona Media (Core) y Estabilizadores' },
+        { id: 'prep_fisica_superior', nombre: perfilDia.kind === 'dance_choreography' ? 'Hombros, escápulas y porte de brazos' : 'Tren Superior (Fuerza / Empuje)' },
+        { id: 'prep_fisica_inferior', nombre: perfilDia.kind === 'dance_choreography' ? 'Pie, tobillo, rodilla y cadera' : 'Tren Inferior (Pliometría / Potencia)' }
       ]
     },
     { 
-      id: 'tecnico', titulo: '3. Trabajo Técnico', tiempo: `${tiemposCalculados.tecnico} min`, color: 'border-blue-300 bg-blue-50', icon: Activity, textColor: 'text-blue-600',
+      id: 'tecnico', titulo: perfilDia.kind === 'dance_choreography' ? '3. Técnica de Ballet' : '3. Trabajo Técnico', tiempo: `${tiemposCalculados.tecnico} min`, color: 'border-blue-300 bg-blue-50', icon: Activity, textColor: 'text-blue-600',
       subdivisiones: [
-        { id: 'tecnico_aparato1', nombre: nombreAparato1 },
-        { id: 'tecnico_aparato2', nombre: nombreAparato2 }
+        { id: 'tecnico_aparato1', nombre: perfilDia.kind === 'dance_choreography' ? 'Barra, posiciones y alineación' : nombreAparato1 },
+        { id: 'tecnico_aparato2', nombre: perfilDia.kind === 'dance_choreography' ? 'Centro, giros y desplazamientos' : nombreAparato2 }
       ]
     },
     { 
-      id: 'rutinas', titulo: '4. Esquemas y Pasadas', tiempo: `${tiemposCalculados.rutinas} min`, color: 'border-purple-300 bg-purple-50', icon: Award, textColor: 'text-purple-600',
+      id: 'rutinas', titulo: perfilDia.kind === 'dance_choreography' ? '4. Coreografía y Expresión' : '4. Esquemas y Pasadas', tiempo: `${tiemposCalculados.rutinas} min`, color: 'border-purple-300 bg-purple-50', icon: Award, textColor: 'text-purple-600',
       subdivisiones: [
-        { id: 'rutinas_mitades', nombre: 'Secuencias y Conexiones' },
-        { id: 'rutinas_completas', nombre: 'Rutinas Completas' }
+        { id: 'rutinas_mitades', nombre: perfilDia.kind === 'dance_choreography' ? 'Frases, musicalidad y enlaces' : 'Secuencias y Conexiones' },
+        { id: 'rutinas_completas', nombre: perfilDia.kind === 'dance_choreography' ? 'Composición, expresión y limpieza' : 'Rutinas Completas' }
       ]
     },
     { 
@@ -228,7 +227,7 @@ export default function ConstructorSesion({
         { id: 'cierre_retroalimentacion', nombre: 'Retroalimentación (Feedback)' }
       ]
     }
-  ], [nombreAparato1, nombreAparato2, tiemposCalculados]);
+  ], [nombreAparato1, nombreAparato2, perfilDia.kind, tiemposCalculados]);
 
   useEffect(() => {
     setIsBrowser(true)
@@ -333,15 +332,21 @@ export default function ConstructorSesion({
       const fechaParseada = parsearFecha(fechaExactaDia);
       const objetivoBuscado = `${objetivoFase} - ${fechaExactaDia}`;
 
-      let query = supabase.from('sesiones').select('*').eq('club_id', clubId).eq('nivel', nivelSeleccionado);
-      if (fechaParseada) query = query.eq('fecha_calendario', fechaParseada);
-      else query = query.eq('objetivo', objetivoBuscado); 
+      const params = new URLSearchParams({
+        grupoId,
+        nivel: nivelSeleccionado,
+        objetivo: objetivoBuscado,
+      })
+      if (fechaParseada) params.set('fechaCalendario', fechaParseada)
 
-      const { data: sesionDia } = await query.single();
+      const response = await fetch(`/api/sesiones?${params.toString()}`)
+      const result = await response.json() as { session?: { id: string; ejercicios?: unknown } | null; error?: string }
+      if (!response.ok) throw new Error(result.error || 'No se pudo cargar la sesión')
+      const sesionCompatible = result.session;
       
-      if (sesionDia && sesionDia.ejercicios) {
-        setSesionId(sesionDia.id) 
-        const ejerciciosGuardados = sesionDia.ejercicios as Record<string, EjercicioSesion[] | undefined>
+      if (sesionCompatible && sesionCompatible.ejercicios) {
+        setSesionId(sesionCompatible.id)
+        const ejerciciosGuardados = sesionCompatible.ejercicios as Record<string, EjercicioSesion[] | undefined>
         const refrescarColumna = (colVieja?: EjercicioSesion[]) => {
           if (!colVieja) return []
           return colVieja.map(viejo => {
@@ -376,7 +381,7 @@ export default function ConstructorSesion({
       setCargandoDia(false)
     }
     cargarSesionDelDia()
-  }, [fechaExactaDia, objetivoFase, nivelSeleccionado, todosLosEjercicios, clubId])
+  }, [fechaExactaDia, objetivoFase, nivelSeleccionado, todosLosEjercicios, clubId, grupoId])
 
   const mostrarNotificacion = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
@@ -428,6 +433,8 @@ export default function ConstructorSesion({
           semana: semanaActual, 
           dia: diaActivo, 
           enfoqueDia: enfoqueDia, 
+          aparatosDia,
+          tipoSesion: perfilDia.kind,
           horario: horaDia, 
           nombreClub,
           // 🔥 NUEVO: Enviamos el contexto extra a la IA
@@ -464,6 +471,8 @@ export default function ConstructorSesion({
           semana: semanaActual, 
           dia: diaActivo, 
           enfoqueDia: enfoqueDia, 
+          aparatosDia,
+          tipoSesion: perfilDia.kind,
           horario: horaDia, 
           nombreClub,
           // 🔥 NUEVO: Enviamos el contexto extra a la IA
@@ -511,7 +520,11 @@ export default function ConstructorSesion({
 
         const tecnicoGenerado = procesarArregloIA(iaSugerencia['tecnico']);
         const tec1: EjercicioSesion[] = []; const tec2: EjercicioSesion[] = [];
-        tecnicoGenerado.forEach(ej => {
+        tecnicoGenerado.forEach((ej, index) => {
+            if (perfilDia.kind === 'dance_choreography') {
+              (index % 2 === 0 ? tec1 : tec2).push(ej)
+              return
+            }
             const aparatoEj = ej.aparato || '';
             if (aparatoEj === nombreAparato1) { tec1.push(ej); } 
             else if (aparatoEj === nombreAparato2) { tec2.push(ej); } 
@@ -549,12 +562,21 @@ export default function ConstructorSesion({
       const datosSesion: ColumnasSesion = {}
       subclavesEstaticas.forEach(k => datosSesion[k] = columnas[k])
 
-      const payload = { club_id: clubId, nivel: nivelSeleccionado, objetivo: `${objetivoFase} - ${fechaExactaDia}`, ejercicios: datosSesion, fecha_calendario: parsearFecha(fechaExactaDia) }
-      const { data, error } = sesionId
-        ? await supabase.from('sesiones').update(payload).eq('id', sesionId).eq('club_id', clubId).select().single()
-        : await supabase.from('sesiones').insert([payload]).select().single()
-      if (error) throw error
-      if (data) setSesionId(data.id) 
+      const response = await fetch('/api/sesiones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: sesionId,
+          grupoId,
+          nivel: nivelSeleccionado,
+          objetivo: `${objetivoFase} - ${fechaExactaDia}`,
+          ejercicios: datosSesion,
+          fechaCalendario: parsearFecha(fechaExactaDia),
+        }),
+      })
+      const result = await response.json() as { session?: { id: string } | null; error?: string }
+      if (!response.ok) throw new Error(result.error || 'No se pudo guardar la sesión')
+      if (result.session) setSesionId(result.session.id)
       mostrarNotificacion('¡Sesión guardada exitosamente! 🏆', 'exito'); setHaySesionParaGuardar(false)
     } catch { mostrarNotificacion('Error al guardar sesión', 'error');
     } finally { setGuardando(false) }
@@ -671,7 +693,7 @@ export default function ConstructorSesion({
               </div>
               <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">{semanaActual} • {nivelSeleccionado}</p>
               <p className="text-sm text-slate-500 mt-2 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-100 inline-block w-full sm:w-auto">
-                <span className="text-slate-700 font-bold">Enfoque:</span> {enfoqueDia} <span className="mx-2 text-slate-300 hidden sm:inline">|</span> <span className="block sm:inline sm:mt-0 mt-1"><span className="text-slate-700 font-bold">Fase:</span> {objetivoFase}</span>
+                <span className="text-slate-700 font-bold">Enfoque:</span> {enfoqueDia} <span className="mx-2 text-slate-300 hidden sm:inline">|</span> <span className="block sm:inline sm:mt-0 mt-1"><span className="text-slate-700 font-bold">Tipo:</span> {perfilDia.label}</span> <span className="mx-2 text-slate-300 hidden sm:inline">|</span> <span className="block sm:inline sm:mt-0 mt-1"><span className="text-slate-700 font-bold">Fase:</span> {objetivoFase}</span>
               </p>
             </div>
             
@@ -943,7 +965,7 @@ export default function ConstructorSesion({
         <div className="border-b-4 border-slate-900 pb-4 mb-6 flex justify-between items-end">
           <div className="flex items-center gap-4">
             {logoUrl && logoUrl !== '/default-club-logo.png' ? (
-               <img src={logoUrl} alt="Logo Club" className="w-16 h-16 object-contain" />
+               <Image src={logoUrl} alt="Logo del club" width={64} height={64} unoptimized className="h-16 w-16 object-contain" />
             ) : (
                <div className="w-16 h-16 bg-slate-800 rounded-xl flex items-center justify-center text-white"><Dumbbell size={32} /></div>
             )}

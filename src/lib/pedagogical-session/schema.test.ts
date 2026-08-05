@@ -1,0 +1,3 @@
+import {describe,expect,it} from 'vitest';import {pedagogicalFields,pedagogicalSessionSchema} from './schema'
+const blocks=Object.entries(pedagogicalFields).map(([phase,fields])=>({phase,content:Object.fromEntries(fields.map(field=>[field,'Contenido pedagógico']))}))
+describe('estructura pedagógica',()=>{it('acepta las cinco fases con campos estructurados',()=>expect(pedagogicalSessionSchema.safeParse({reason:'Completar planificación',blocks}).success).toBe(true));it('rechaza campos arbitrarios fuera de la fase',()=>expect(pedagogicalSessionSchema.safeParse({reason:'Prueba',blocks:blocks.map((x,i)=>i?x:{...x,content:{diagnosticoMedico:'No permitido'}})}).success).toBe(false))})

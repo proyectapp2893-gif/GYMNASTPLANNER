@@ -12,9 +12,12 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
 
 # next.js
 /.next/
+/.next-playwright/
 /out/
 
 # production
@@ -35,6 +38,13 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# local Supabase CLI state
+/supabase/.temp/
+
+# local AI workspace instructions
+/AGENTS.md
+/CLAUDE.md
 
 # typescript
 *.tsbuildinfo

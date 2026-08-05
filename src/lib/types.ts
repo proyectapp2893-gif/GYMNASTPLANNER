@@ -58,6 +58,7 @@ export interface Competencia {
 
 export interface Puntuacion {
   id?: string
+  club_id?: string | null
   competencia_id: string
   atleta_id: string
   aparato: string
@@ -69,6 +70,7 @@ export interface Puntuacion {
 export interface Sesion {
   id: string
   club_id?: string | null
+  grupo_id?: string | null
   nivel?: string | null
   objetivo?: string | null
   ejercicios?: JsonObject | null

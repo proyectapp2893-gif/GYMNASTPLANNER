@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import { useClubStore } from '../../../store/useClubStore'; // 🔥 Ruta corregida (le quité un '../')
+import { isSuperAdminEmailClient } from '../../lib/admin-client';
 import { Mail, Lock, Loader2, Dumbbell, AlertCircle, Building2, User, CheckCircle2 } from 'lucide-react';
 
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : 'Error desconocido';
@@ -21,9 +22,6 @@ export default function LoginPage() {
   
   const router = useRouter();
   const { setClubData } = useClubStore();
-
-  // 🔥 TU LLAVE MAESTRA
-  const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com';
 
   const enviarRecuperacion = async () => {
     setError(null);
@@ -65,7 +63,7 @@ export default function LoginPage() {
         if (authData.user) {
           
           // 🔥 MAGIA: ENRUTAMIENTO INTELIGENTE POR ROLES
-          if (authData.user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+          if (isSuperAdminEmailClient(authData.user.email)) {
             // Es el dueño de la app. Lo mandamos directo a su bóveda secreta.
             router.push('/superadmin');
             return; // Detenemos la ejecución aquí, no necesita cargar datos de club.

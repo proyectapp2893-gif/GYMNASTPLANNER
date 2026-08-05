@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
+import { isSuperAdminEmailClient } from '../../lib/admin-client';
 import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag, UserPlus, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -79,8 +80,6 @@ export default function SuperAdminPage() {
   const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '' });
   const [modalPassword, setModalPassword] = useState<{ userId: string; email: string; password: string; guardando: boolean } | null>(null);
 
-  const SUPER_ADMIN_EMAIL = 'Gymnastplanner@gmail.com'; 
-
   const mostrarAviso = useCallback((mensaje: string, tipo: 'exito' | 'error' = 'exito') => {
     setToast({ mensaje, tipo });
     setTimeout(() => setToast(null), 3500);
@@ -120,7 +119,7 @@ export default function SuperAdminPage() {
       return;
     }
 
-    if (user.email?.trim().toLowerCase() !== SUPER_ADMIN_EMAIL.trim().toLowerCase()) {
+    if (!isSuperAdminEmailClient(user.email)) {
       setMensajeError(`Acceso denegado. Estás usando el correo: "${user.email}" y se requiere la llave maestra.`);
       setCargando(false);
       return;
