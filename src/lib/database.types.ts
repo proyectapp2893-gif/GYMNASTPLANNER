@@ -746,6 +746,9 @@ export type Database = {
           catalogo_extra: Json | null
           color_principal: string | null
           created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deletion_reason: string | null
           estado: string | null
           id: string
           inventario: Json | null
@@ -757,6 +760,9 @@ export type Database = {
           catalogo_extra?: Json | null
           color_principal?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
           estado?: string | null
           id?: string
           inventario?: Json | null
@@ -768,6 +774,9 @@ export type Database = {
           catalogo_extra?: Json | null
           color_principal?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
           estado?: string | null
           id?: string
           inventario?: Json | null

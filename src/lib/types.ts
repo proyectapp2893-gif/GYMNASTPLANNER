@@ -7,6 +7,9 @@ export interface Club {
   acceso_biblioteca_elite?: boolean | null
   inventario?: string[] | null
   catalogo_extra?: string[] | null
+  deleted_at?: string | null
+  deleted_by?: string | null
+  deletion_reason?: string | null
 }
 
 export interface Grupo {

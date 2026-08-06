@@ -39,6 +39,12 @@ export default function SuperAdminPage() {
   const router = useRouter();
   const [clubes, setClubes] = useState<ClubAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [creandoClub, setCreandoClub] = useState(false);
+  const [nuevoClub, setNuevoClub] = useState({ nombre: '', estado: 'aprobado', accesoBiblioteca: false });
+  const [clubAEliminar, setClubAEliminar] = useState<ClubAdmin | null>(null);
+  const [confirmacionClub, setConfirmacionClub] = useState('');
+  const [motivoEliminacion, setMotivoEliminacion] = useState('');
+  const [eliminandoClub, setEliminandoClub] = useState(false);
   
   const [autorizado, setAutorizado] = useState(false); 
   const [mensajeError, setMensajeError] = useState(''); 
@@ -86,14 +92,20 @@ export default function SuperAdminPage() {
   }, []);
 
   const cargarDatos = useCallback(async () => {
-    const { data: clubesData } = await supabase.from('clubs').select('*').order('estado', { ascending: false }); 
-    if (clubesData) setClubes(clubesData as ClubAdmin[]);
+    try {
+      const response = await fetch('/api/admin/clubs');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudieron cargar los clubes');
+      setClubes(payload.clubs || []);
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    }
 
     const { data: ejData } = await supabase.from('ejercicios').select('*').is('club_id', null).order('created_at', { ascending: false });
     if (ejData) setEjerciciosGlobales(ejData as EjercicioGlobal[]);
 
     setCargando(false);
-  }, []);
+  }, [mostrarAviso]);
 
   const cargarUsuarios = useCallback(async () => {
     setCargandoUsuarios(true);
@@ -229,18 +241,64 @@ export default function SuperAdminPage() {
   };
 
   const cambiarEstadoClub = async (id: string, nuevoEstado: string) => {
-    const { error } = await supabase.from('clubs').update({ estado: nuevoEstado }).eq('id', id);
-    if (!error) {
-      void cargarDatos();
+    try {
+      const response = await fetch('/api/admin/clubs', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubId: id, action: nuevoEstado === 'aprobado' ? 'approve' : 'suspend' }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo cambiar el estado');
+      await cargarDatos();
       mostrarAviso(`Club marcado como ${nuevoEstado}.`, 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
     }
   };
 
   const cambiarAccesoBiblioteca = async (id: string, accesoActual: boolean) => {
-    const { error } = await supabase.from('clubs').update({ acceso_biblioteca_elite: !accesoActual }).eq('id', id);
-    if (!error) {
-      void cargarDatos();
+    try {
+      const response = await fetch('/api/admin/clubs', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubId: id, action: accesoActual ? 'disablePremium' : 'enablePremium' }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo cambiar el acceso Premium');
+      await cargarDatos();
       mostrarAviso(`Acceso Premium ${!accesoActual ? 'activado' : 'desactivado'}.`, 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    }
+  };
+
+  const crearClub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreandoClub(true);
+    try {
+      const response = await fetch('/api/admin/clubs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nuevoClub) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo crear el club');
+      setNuevoClub({ nombre: '', estado: 'aprobado', accesoBiblioteca: false });
+      await cargarDatos();
+      mostrarAviso('Club creado correctamente. Ya puedes asignarle usuarios.', 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    } finally {
+      setCreandoClub(false);
+    }
+  };
+
+  const eliminarClub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clubAEliminar) return;
+    setEliminandoClub(true);
+    try {
+      const response = await fetch('/api/admin/clubs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubId: clubAEliminar.id, confirmationName: confirmacionClub, reason: motivoEliminacion }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo eliminar el club');
+      setClubAEliminar(null);
+      setConfirmacionClub('');
+      setMotivoEliminacion('');
+      await cargarDatos();
+      if (pestañaActiva === 'usuarios') await cargarUsuarios();
+      mostrarAviso(`Club eliminado y ${payload.suspendedUsers || 0} cuenta(s) suspendida(s).`, 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    } finally {
+      setEliminandoClub(false);
     }
   };
 
@@ -712,6 +770,38 @@ export default function SuperAdminPage() {
         </div>
       )}
 
+      {clubAEliminar && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={eliminarClub} className="w-full max-w-lg bg-slate-900 border border-rose-500/30 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-700">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400"><AlertTriangle className="w-6 h-6" /></div>
+                <div>
+                  <h2 className="text-xl font-black text-white">Eliminar club</h2>
+                  <p className="text-sm text-slate-400 mt-1">Se bloqueará su acceso, pero los historiales deportivos y la auditoría se conservarán.</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Escribe “{clubAEliminar.nombre}” para confirmar</label>
+                <input required value={confirmacionClub} onChange={e => setConfirmacionClub(e.target.value)} className="w-full p-3 bg-slate-950 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Motivo de eliminación</label>
+                <textarea required minLength={5} maxLength={500} value={motivoEliminacion} onChange={e => setMotivoEliminacion(e.target.value)} rows={3} className="w-full p-3 bg-slate-950 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-rose-500 outline-none resize-none" />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-700 flex justify-end gap-3">
+              <button type="button" onClick={() => { setClubAEliminar(null); setConfirmacionClub(''); setMotivoEliminacion(''); }} className="px-5 py-3 bg-slate-800 text-slate-300 rounded-xl font-bold">Cancelar</button>
+              <button type="submit" disabled={eliminandoClub || confirmacionClub !== clubAEliminar.nombre || motivoEliminacion.trim().length < 5} className="px-5 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black flex items-center gap-2 disabled:opacity-40">
+                {eliminandoClub ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />} Eliminar club
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 border-b border-slate-800 pb-6">
           <div className="flex items-center gap-4">
@@ -750,7 +840,30 @@ export default function SuperAdminPage() {
         </div>
 
         {pestañaActiva === 'clubes' && (
-           <div className="bg-slate-800 rounded-3xl overflow-hidden border border-slate-700 shadow-xl animate-in fade-in duration-300">
+          <div className="space-y-6 animate-in fade-in duration-300">
+           <form onSubmit={crearClub} className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl p-6">
+             <div className="flex items-center gap-3 mb-5">
+               <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg"><Plus className="w-5 h-5" /></div>
+               <div><h2 className="text-xl font-bold text-white">Crear nuevo club</h2><p className="text-sm text-slate-400">Después podrás crear y asignar sus usuarios desde la pestaña Usuarios.</p></div>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_190px_auto] gap-4 items-end">
+               <div>
+                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Nombre del club</label>
+                 <input required minLength={3} maxLength={120} value={nuevoClub.nombre} onChange={e => setNuevoClub({ ...nuevoClub, nombre: e.target.value })} placeholder="Ej. Club Gimnástico Central" className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+               </div>
+               <div>
+                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Estado inicial</label>
+                 <select value={nuevoClub.estado} onChange={e => setNuevoClub({ ...nuevoClub, estado: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl outline-none"><option value="aprobado">Aprobado</option><option value="pendiente">Pendiente</option></select>
+               </div>
+               <label className="h-[50px] px-4 flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl text-sm font-bold text-slate-300 cursor-pointer">
+                 <input type="checkbox" checked={nuevoClub.accesoBiblioteca} onChange={e => setNuevoClub({ ...nuevoClub, accesoBiblioteca: e.target.checked })} className="w-4 h-4 accent-indigo-500" /> Acceso Premium
+               </label>
+               <button type="submit" disabled={creandoClub} className="h-[50px] px-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black flex items-center justify-center gap-2 disabled:opacity-60">
+                 {creandoClub ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />} Crear club
+               </button>
+             </div>
+           </form>
+           <div className="bg-slate-800 rounded-3xl overflow-hidden border border-slate-700 shadow-xl">
            <div className="overflow-x-auto">
              <table className="w-full text-left border-collapse min-w-[800px]">
                <thead>
@@ -784,12 +897,14 @@ export default function SuperAdminPage() {
                        ) : (
                          <button onClick={() => cambiarEstadoClub(club.id, 'pendiente')} className="flex items-center gap-1 bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg text-sm font-bold"><XCircle className="w-4 h-4" /> Suspender</button>
                        )}
+                       <button onClick={() => setClubAEliminar(club)} title={`Eliminar ${club.nombre}`} className="flex items-center gap-1 bg-slate-700 hover:bg-rose-600 text-slate-200 hover:text-white px-3 py-2 rounded-lg text-sm font-bold transition-colors"><Trash2 className="w-4 h-4" /> Eliminar</button>
                      </td>
                    </tr>
                  ))}
                </tbody>
              </table>
            </div>
+         </div>
          </div>
         )}
 

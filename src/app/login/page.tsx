@@ -82,7 +82,13 @@ export default function LoginPage() {
             .from('clubs')
             .select('nombre, logo_url, estado')
             .eq('id', perfilData.club_id)
+            .is('deleted_at', null)
             .single();
+
+          if (!clubData) {
+            await supabase.auth.signOut();
+            throw new Error('Este club ya no tiene acceso al sistema.');
+          }
 
           if (clubData?.estado === 'pendiente') {
             await supabase.auth.signOut();
