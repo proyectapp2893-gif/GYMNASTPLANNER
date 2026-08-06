@@ -85,6 +85,7 @@ export default function SuperAdminPage() {
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '' });
   const [modalPassword, setModalPassword] = useState<{ userId: string; email: string; password: string; guardando: boolean } | null>(null);
+  const [reiniciandoUsuarioId, setReiniciandoUsuarioId] = useState<string | null>(null);
 
   const mostrarAviso = useCallback((mensaje: string, tipo: 'exito' | 'error' = 'exito') => {
     setToast({ mensaje, tipo });
@@ -205,6 +206,25 @@ export default function SuperAdminPage() {
     } catch (error) {
       mostrarAviso(getErrorMessage(error), 'error');
       setModalPassword(prev => prev ? { ...prev, guardando: false } : prev);
+    }
+  };
+
+  const reiniciarPasswordUsuario = async (userId: string, email: string) => {
+    if (!confirm(`¿Enviar un enlace seguro de restablecimiento a ${email}?`)) return;
+    setReiniciandoUsuarioId(userId);
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset', userId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo enviar el enlace');
+      mostrarAviso(`Enlace de recuperación enviado a ${email}.`, 'exito');
+    } catch (error) {
+      mostrarAviso(getErrorMessage(error), 'error');
+    } finally {
+      setReiniciandoUsuarioId(null);
     }
   };
 
@@ -981,8 +1001,11 @@ export default function SuperAdminPage() {
                           </td>
                           <td className="p-4">
                             <div className="flex justify-end gap-2">
-                              <button onClick={() => abrirModalPassword(usuario.id, usuario.email)} className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
-                                <KeyRound className="w-3 h-3" /> Clave
+                              <button onClick={() => abrirModalPassword(usuario.id, usuario.email)} title="Establecer una contraseña nueva" className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                                <KeyRound className="w-3 h-3" /> Cambiar clave
+                              </button>
+                              <button onClick={() => reiniciarPasswordUsuario(usuario.id, usuario.email)} disabled={reiniciandoUsuarioId === usuario.id} title="Enviar enlace seguro al correo del perfil" className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 disabled:opacity-60">
+                                {reiniciandoUsuarioId === usuario.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogOut className="w-3 h-3 rotate-180" />} Reiniciar
                               </button>
                               <button onClick={() => cambiarEstadoUsuario(usuario.id, usuario.disabled)} className={`px-3 py-2 rounded-lg text-xs font-bold ${usuario.disabled ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}>
                                 {usuario.disabled ? 'Reactivar' : 'Desactivar'}

@@ -11,7 +11,7 @@ const createUserSchema = z.object({
 })
 
 const updateUserSchema = z.object({
-  action: z.enum(['password', 'disable', 'enable', 'profile']),
+  action: z.enum(['password', 'reset', 'disable', 'enable', 'profile']),
   userId: z.string().uuid(),
   password: z.string().min(8).optional(),
   nombre: z.string().min(1).max(120).optional(),
@@ -116,10 +116,19 @@ export async function PATCH(request: NextRequest) {
   const service = createSupabaseServiceClient()
   const { action, userId, password, nombre, clubId } = parsed.data
 
+  const { data: target, error: targetError } = await service.auth.admin.getUserById(userId)
+  if (targetError || !target.user) {
+    return NextResponse.json({ error: targetError?.message || 'Usuario no encontrado' }, { status: 404 })
+  }
+
+  const { data: targetProfile } = await service
+    .from('perfiles')
+    .select('club_id')
+    .eq('id', userId)
+    .maybeSingle()
+
   if (action === 'disable') {
-    const { data, error } = await service.auth.admin.getUserById(userId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (isSuperAdminEmail(data.user?.email)) {
+    if (isSuperAdminEmail(target.user.email)) {
       return NextResponse.json({ error: 'No se puede desactivar la cuenta superadmin' }, { status: 400 })
     }
   }
@@ -127,6 +136,14 @@ export async function PATCH(request: NextRequest) {
   if (action === 'password') {
     if (!password) return NextResponse.json({ error: 'Contraseña requerida' }, { status: 400 })
     const { error } = await service.auth.admin.updateUserById(userId, { password })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (action === 'reset') {
+    if (!target.user.email) return NextResponse.json({ error: 'El perfil no tiene un correo válido' }, { status: 400 })
+    const { error } = await service.auth.resetPasswordForEmail(target.user.email, {
+      redirectTo: `${request.nextUrl.origin}/reset-password`,
+    })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -149,6 +166,20 @@ export async function PATCH(request: NextRequest) {
       const { error } = await service.from('perfiles').update(updates).eq('id', userId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
+  }
+
+  if (action === 'password' || action === 'reset') {
+    const server = await createSupabaseServerClient()
+    const { data: { user: actor } } = await server.auth.getUser()
+    await service.from('auditoria').insert({
+      club_id: targetProfile?.club_id || null,
+      usuario_id: actor?.id || null,
+      entidad: 'perfiles',
+      entidad_id: userId,
+      accion: action === 'reset' ? 'password_reset_requested' : 'password_changed_by_superadmin',
+      motivo: action === 'reset' ? 'Enlace de recuperación solicitado desde Panel Maestro' : 'Contraseña establecida desde Panel Maestro',
+      contexto: { origin: 'superadmin_panel', target_email: target.user.email || null },
+    })
   }
 
   return NextResponse.json({ ok: true })
