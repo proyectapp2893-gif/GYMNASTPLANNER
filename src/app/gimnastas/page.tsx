@@ -3,6 +3,7 @@ import { Search, UserRound, Users } from 'lucide-react'
 import { getGymnasts } from '../../lib/gymnasts/server'
 import { getGymnastGroups } from '../../lib/gymnasts/server'
 import GymnastRegistrationForm from '../../components/gymnasts/GymnastRegistrationForm'
+import GymnastExcelImport from '../../components/gymnasts/GymnastExcelImport'
 
 export default async function GymnastsPage() {
   const [gymnasts,groups]=await Promise.all([getGymnasts(),getGymnastGroups()])
@@ -13,7 +14,7 @@ export default async function GymnastsPage() {
       <p className="mt-2 text-slate-500">Selecciona una gimnasta para revisar su planificación, progreso y restricciones.</p>
     </header>
     <main className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[340px_1fr]">
-      <GymnastRegistrationForm groups={groups}/>
+      <div><GymnastRegistrationForm groups={groups}/><GymnastExcelImport/></div>
       <div><div className="mb-5 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm"><Search className="h-4 w-4" /> {gymnasts.length} gimnastas activas</div>
       {gymnasts.length===0?<div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-14 text-center text-slate-700">Los grupos están listos. Registra la primera gimnasta desde el formulario.</div>:
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{gymnasts.map(gymnast=><Link key={gymnast.id} href={`/gimnastas/${gymnast.id}/resumen`} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md">
