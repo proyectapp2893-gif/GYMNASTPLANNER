@@ -47,6 +47,8 @@ export const getGymnasts = cache(async (): Promise<GymnastListItem[]> => {
   }))
 })
 
+export const getGymnastGroups=cache(async()=>{const{supabase,clubId,error}=await getAuthenticatedClub();if(error||!clubId)return[];const{data, error:queryError}=await supabase.from('grupos').select('id,nombre,nivel').eq('club_id',clubId).order('nivel').order('nombre');if(queryError)throw new Error(`No se pudieron cargar los grupos: ${queryError.message}`);return data||[]})
+
 export const getGymnastProfile = cache(async (gymnastId: string): Promise<GymnastProfile> => {
   const { supabase, clubId, error } = await getAuthenticatedClub()
   if (error || !clubId) notFound()
