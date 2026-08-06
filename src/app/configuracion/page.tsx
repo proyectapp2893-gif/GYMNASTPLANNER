@@ -169,7 +169,7 @@ function ConfiguracionContenido() {
   useEffect(() => {
     if (!grupoActivo) return
     const cargarConfig = async () => {
-      const { data } = await supabase.from('configuracion_grupos').select('*').eq('grupo_id', grupoActivo).single()
+      const { data } = await supabase.from('configuracion_grupos_efectiva').select('*').eq('grupo_id', grupoActivo).single()
       if (data) {
         if (data.fecha_inicio) setFechaInicio(data.fecha_inicio)
         if (data.fecha_competencia) setFechaCompetencia(data.fecha_competencia)
@@ -217,6 +217,7 @@ function ConfiguracionContenido() {
     try {
       const { error } = await supabase.from('configuracion_grupos').upsert({
         grupo_id: grupoActivo,
+        heredar_calendario_temporada: false,
         fecha_inicio: fechaInicio,
         fecha_competencia: fechaCompetencia,
         competencias_secundarias: competenciasSecundarias, // 🔥 NUEVO: Guardar en DB
@@ -282,7 +283,8 @@ function ConfiguracionContenido() {
           <ConfigCard href="/configuracion/usuarios" icon={<UsersRound />} title="Usuarios y seguridad" description="Perfiles del club, contraseñas y recuperación de acceso." />
           <ConfigCard href="/configuracion?seccion=grupos" icon={<Shield />} title="Grupos y niveles" description="Crea equipos y define su nivel técnico." />
           <ConfigCard href="/configuracion?seccion=inventario" icon={<Boxes />} title="Inventario" description="Aparatos, implementos y recursos disponibles." />
-          <ConfigCard href="/dashboard" icon={<LayoutDashboard />} title="Planificación anual" description="Abre un grupo para configurar y consultar su macrociclo." />
+          <ConfigCard href="/configuracion/temporadas" icon={<CalendarDays />} title="Temporadas del club" description="Define fechas y competencias una vez y aplícalas a varios grupos." />
+          <ConfigCard href="/dashboard" icon={<LayoutDashboard />} title="Planificación anual" description="Consulta el macrociclo heredado y los ajustes de cada grupo." />
           <ConfigCard href="/configuracion/catalogos-individuales" icon={<Settings />} title="Catálogos" description="Pruebas, estados, errores y criterios configurables." />
         </div>
       )}

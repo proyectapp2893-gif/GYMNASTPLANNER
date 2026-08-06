@@ -72,7 +72,7 @@ export default function DashboardPlanificacion() {
       const gruposActivos = (data || []) as GrupoActivo[]
       setGrupos(gruposActivos)
       const ids=gruposActivos.map(grupo=>grupo.id)
-      const {data:planes}=ids.length?await supabase.from('configuracion_grupos').select('*').in('grupo_id',ids):{data:[]}
+      const {data:planes}=ids.length?await supabase.from('configuracion_grupos_efectiva').select('*').in('grupo_id',ids):{data:[]}
       const mapa=Object.fromEntries((planes||[]).map(plan=>[String(plan.grupo_id),plan as ConfiguracionPlanificacion]))
       setConfiguraciones(mapa)
       setGrupoSeleccionado(null)

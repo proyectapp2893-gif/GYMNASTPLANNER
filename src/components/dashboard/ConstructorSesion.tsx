@@ -258,7 +258,7 @@ export default function ConstructorSesion({
     if (!grupoId) return;
     const cargarConfigGrupo = async () => {
       try {
-        const { data } = await supabase.from('configuracion_grupos')
+        const { data } = await supabase.from('configuracion_grupos_efectiva')
           .select('competencias_secundarias, fecha_competencia, horario_semanal')
           .eq('grupo_id', grupoId)
           .single();

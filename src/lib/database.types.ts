@@ -983,12 +983,14 @@ export type Database = {
           fecha_competencia: string | null
           fecha_inicio: string | null
           grupo_id: string | null
+          heredar_calendario_temporada: boolean
           horario_semanal: Json | null
           id: string
           inventario: Json | null
           semanas_competitivo: number | null
           semanas_preparatorio: number | null
           semanas_totales: number | null
+          temporada_id: string | null
         }
         Insert: {
           competencias_secundarias?: Json | null
@@ -996,12 +998,14 @@ export type Database = {
           fecha_competencia?: string | null
           fecha_inicio?: string | null
           grupo_id?: string | null
+          heredar_calendario_temporada?: boolean
           horario_semanal?: Json | null
           id?: string
           inventario?: Json | null
           semanas_competitivo?: number | null
           semanas_preparatorio?: number | null
           semanas_totales?: number | null
+          temporada_id?: string | null
         }
         Update: {
           competencias_secundarias?: Json | null
@@ -1009,12 +1013,14 @@ export type Database = {
           fecha_competencia?: string | null
           fecha_inicio?: string | null
           grupo_id?: string | null
+          heredar_calendario_temporada?: boolean
           horario_semanal?: Json | null
           id?: string
           inventario?: Json | null
           semanas_competitivo?: number | null
           semanas_preparatorio?: number | null
           semanas_totales?: number | null
+          temporada_id?: string | null
         }
         Relationships: [
           {
@@ -3075,40 +3081,52 @@ export type Database = {
       temporadas: {
         Row: {
           club_id: string
+          competencia_principal_nombre: string | null
+          competencias_preparatorias: Json
           created_at: string
           created_by: string | null
           deleted_at: string | null
           estado: string
           fecha_fin: string
           fecha_inicio: string
+          fecha_competencia_principal: string | null
           id: string
           nombre: string
+          objetivo_general: string | null
           updated_at: string
           updated_by: string | null
         }
         Insert: {
           club_id: string
+          competencia_principal_nombre?: string | null
+          competencias_preparatorias?: Json
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
           estado?: string
           fecha_fin: string
           fecha_inicio: string
+          fecha_competencia_principal?: string | null
           id?: string
           nombre: string
+          objetivo_general?: string | null
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
           club_id?: string
+          competencia_principal_nombre?: string | null
+          competencias_preparatorias?: Json
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
           estado?: string
           fecha_fin?: string
           fecha_inicio?: string
+          fecha_competencia_principal?: string | null
           id?: string
           nombre?: string
+          objetivo_general?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -3220,7 +3238,26 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      configuracion_grupos_efectiva: {
+        Row: {
+          competencias_secundarias: Json | null
+          created_at: string | null
+          fecha_competencia: string | null
+          fecha_inicio: string | null
+          grupo_id: string | null
+          heredar_calendario_temporada: boolean | null
+          horario_semanal: Json | null
+          id: string | null
+          inventario: Json | null
+          semanas_competitivo: number | null
+          semanas_preparatorio: number | null
+          semanas_totales: number | null
+          temporada_id: string | null
+          temporada_nombre: string | null
+          temporada_objetivo: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       can_access_athlete: {
