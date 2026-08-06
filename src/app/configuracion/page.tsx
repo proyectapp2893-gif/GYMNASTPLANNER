@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore'
-import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2 } from 'lucide-react'
+import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2, Boxes, ChevronRight, UsersRound, LayoutDashboard } from 'lucide-react'
 import GestorInventario from '../../components/dashboard/GestorInventario' 
 import type { Grupo } from '../../lib/types'
 import Image from 'next/image'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 type CompetenciaSecundaria = { nombre: string; fecha: string }
 type DiaHorario = { dia: string; enfoque: string; aparatos: string; lugar: string; hora: string }
@@ -21,6 +23,13 @@ const HORARIO_BASE: DiaHorario[] = [
 ]
 
 export default function ConfiguracionGeneral() {
+  return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="h-10 w-10 animate-spin text-indigo-600" /></div>}><ConfiguracionContenido /></Suspense>
+}
+
+function ConfiguracionContenido() {
+  const searchParams = useSearchParams()
+  const seccion = searchParams.get('seccion')
+  const grupoSolicitado = searchParams.get('grupo')
   const { clubId, nombreClub, logoUrl, setClubData } = useClubStore() 
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [cargandoGrupos, setCargandoGrupos] = useState(true)
@@ -71,6 +80,10 @@ export default function ConfiguracionGeneral() {
   useEffect(() => {
     if (clubId) void cargarGrupos()
   }, [clubId, cargarGrupos])
+
+  useEffect(() => {
+    if (grupoSolicitado && grupos.some(grupo => grupo.id === grupoSolicitado)) setGrupoActivo(grupoSolicitado)
+  }, [grupoSolicitado, grupos])
 
   const mostrarToast = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
@@ -256,15 +269,27 @@ export default function ConfiguracionGeneral() {
       )}
 
       <div className="mb-10 border-b border-slate-200 pb-6">
+        {seccion && <Link href="/configuracion" className="mb-4 inline-flex items-center gap-2 text-sm font-black text-indigo-700 hover:text-indigo-900">← Volver al centro de configuración</Link>}
         <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
           <Settings className="w-8 h-8 text-indigo-500" /> Centro de Configuración
         </h1>
-        <p className="text-slate-500 mt-2 font-medium">Gestión de identidad, equipos, macrociclos, horarios de entrenamiento e inventario de implementación.</p>
+        <p className="text-slate-500 mt-2 font-medium">Administra cada área del club desde un apartado claro y especializado.</p>
       </div>
 
-      <div className="mb-12">
+      {!seccion && (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <ConfigCard href="/configuracion?seccion=perfil" icon={<Building2 />} title="Perfil del club" description="Nombre institucional, logotipo e identidad visible." />
+          <ConfigCard href="/configuracion/usuarios" icon={<UsersRound />} title="Usuarios y seguridad" description="Perfiles del club, contraseñas y recuperación de acceso." />
+          <ConfigCard href="/configuracion?seccion=grupos" icon={<Shield />} title="Grupos y niveles" description="Crea equipos y define su nivel técnico." />
+          <ConfigCard href="/configuracion?seccion=inventario" icon={<Boxes />} title="Inventario" description="Aparatos, implementos y recursos disponibles." />
+          <ConfigCard href="/dashboard" icon={<LayoutDashboard />} title="Planificación anual" description="Abre un grupo para configurar y consultar su macrociclo." />
+          <ConfigCard href="/configuracion/catalogos-individuales" icon={<Settings />} title="Catálogos" description="Pruebas, estados, errores y criterios configurables." />
+        </div>
+      )}
+
+      <div className={`mb-12 ${seccion === 'perfil' ? '' : 'hidden'}`}>
         <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
-          <Building2 className="w-6 h-6 text-slate-400"/> 1. Perfil del Club e Inventario
+          <Building2 className="w-6 h-6 text-slate-400"/> Perfil del Club
         </h2>
         
         <form onSubmit={guardarPerfilClub} className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 mb-6">
@@ -295,12 +320,15 @@ export default function ConfiguracionGeneral() {
             </div>
           </div>
         </form>
+      </div>
 
+      <div className={`mb-12 ${seccion === 'inventario' ? '' : 'hidden'}`}>
+        <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2"><Boxes className="w-6 h-6 text-slate-400"/> Inventario de implementos</h2>
         <GestorInventario grupoId={clubId} />
       </div>
 
-      <div className="mb-12 border-t border-slate-200 pt-8">
-        <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2"><Shield className="w-6 h-6 text-slate-400"/> 2. Gestión de Equipos</h2>
+      <div className={`mb-12 ${seccion === 'grupos' ? '' : 'hidden'}`}>
+        <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2"><Shield className="w-6 h-6 text-slate-400"/> Gestión de Grupos</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Crear Nuevo</h3>
@@ -349,9 +377,9 @@ export default function ConfiguracionGeneral() {
         </div>
       </div>
 
-      <div className="mb-12 border-t border-slate-200 pt-8">
+      <div className={`mb-12 ${seccion === 'planificacion' ? '' : 'hidden'}`}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><CalendarDays className="w-6 h-6 text-slate-400"/> 3. Temporada y Horarios</h2>
+          <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><CalendarDays className="w-6 h-6 text-slate-400"/> Temporada y Horarios del Grupo</h2>
           
           <button onClick={guardarConfiguracion} disabled={guardandoConfig || !grupoActivo} className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-sm ${!grupoActivo ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
             {guardandoConfig ? <><Loader2 className="w-5 h-5 animate-spin" /> Guardando...</> : <><Save className="w-5 h-5" /> Guardar Ajustes</>}
@@ -504,4 +532,8 @@ export default function ConfiguracionGeneral() {
 
     </div>
   )
+}
+
+function ConfigCard({href,icon,title,description}:{href:string;icon:React.ReactNode;title:string;description:string}) {
+  return <Link href={href} className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-indigo-300 hover:shadow-lg"><div className="flex items-start justify-between gap-4"><div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600 [&_svg]:h-6 [&_svg]:w-6">{icon}</div><ChevronRight className="mt-3 h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-600"/></div><h2 className="mt-5 text-lg font-black text-slate-900">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{description}</p></Link>
 }

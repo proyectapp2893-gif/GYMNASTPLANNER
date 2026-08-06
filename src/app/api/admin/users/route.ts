@@ -8,6 +8,7 @@ const createUserSchema = z.object({
   password: z.string().min(8),
   nombre: z.string().min(1).max(120),
   clubId: z.string().uuid(),
+  rol: z.enum(['administrador_organizacion', 'entrenador_principal', 'entrenador_asistente']).default('administrador_organizacion'),
 })
 
 const updateUserSchema = z.object({
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
   }
 
   const service = createSupabaseServiceClient()
-  const { email, password, nombre, clubId } = parsed.data
+  const { email, password, nombre, clubId, rol } = parsed.data
 
   const { data: created, error: createError } = await service.auth.admin.createUser({
     email,
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
     email,
     nombre,
     club_id: clubId,
+    rol,
   }])
 
   if (perfilError) {

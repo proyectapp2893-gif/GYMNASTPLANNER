@@ -93,7 +93,7 @@ export default function Sidebar() {
           onClick={() => router.push('/configuracion')}
           title="Configuración"
           className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold shadow-sm transition-colors ${
-            pathname === '/configuracion' 
+            pathname?.startsWith('/configuracion')
               ? 'bg-indigo-600 text-white shadow-indigo-500/25' 
               : 'bg-slate-800 text-slate-300 hover:bg-indigo-600 hover:text-white'
           }`}

@@ -7,9 +7,10 @@ import PlanAnualGrid from '../../components/dashboard/PlanAnualGrid'
 import HorarioSemanal from '../../components/dashboard/HorarioSemanal' 
 import ConstructorSesion from '../../components/dashboard/ConstructorSesion' 
 import GraficosCarga from '../../components/dashboard/GraficosCarga' 
-import { ArrowLeft, CalendarDays, ChevronRight, Clock3, LayoutDashboard, Layers3, Loader2, Trophy, Users } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronRight, Clock3, LayoutDashboard, Layers3, Loader2, Settings, Trophy, Users } from 'lucide-react'
 import { calculateCurrentWeek, getWeekPlan, type PlanningConfig } from '../../lib/sports-planning'
 import type { Grupo } from '../../lib/types'
+import Link from 'next/link'
 
 type GrupoActivo = Grupo & { nivel: string }
 type DiaHorario = { dia: string; [key: string]: unknown }
@@ -114,7 +115,8 @@ export default function DashboardPlanificacion() {
         <div>
           <div className="flex items-center gap-3">{grupoSeleccionado&&<button type="button" onClick={volverAGrupos} className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700" aria-label="Volver a grupos"><ArrowLeft className="h-5 w-5"/></button>}<div><h1 className="text-2xl font-black text-slate-800 tracking-tight">{grupoSeleccionado?'Macrociclo anual':'Dashboard de Planificación'}</h1><p className="text-sm text-slate-500 font-medium">{grupoSeleccionado?`${grupoSeleccionado.nombre} · ${grupoSeleccionado.nivel}`:'Selecciona el grupo que deseas planificar'}</p></div></div>
         </div>
-        {grupoSeleccionado?<div className="flex items-center gap-3 w-full md:w-auto bg-slate-50 p-2 rounded-xl border border-slate-100">
+        {grupoSeleccionado?<div className="flex flex-wrap items-center gap-3 w-full md:w-auto bg-slate-50 p-2 rounded-xl border border-slate-100">
+          <Link href={`/configuracion?seccion=planificacion&grupo=${grupoSeleccionado.id}`} className="rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-black text-white hover:bg-indigo-700">Configurar grupo</Link>
           <label htmlFor="selector-grupo" className="text-sm font-bold text-slate-700 pl-2 whitespace-nowrap">Cambiar grupo:</label>
           <select 
             id="selector-grupo"
@@ -133,7 +135,7 @@ export default function DashboardPlanificacion() {
       ) : !grupoSeleccionado ? (
         <GroupCards groups={grupos} configurations={configuraciones} onOpen={abrirGrupo}/>
       ) : !configuracion && grupoSeleccionado ? (
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl mb-6 shadow-sm"><h3 className="font-bold text-amber-800">Macrociclo pendiente de configuración</h3><p className="text-sm text-amber-700">Ve a Configuración para asignar fechas a este equipo.</p><button type="button" onClick={volverAGrupos} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800"><ArrowLeft className="h-4 w-4"/>Volver a los grupos</button></div>
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl mb-6 shadow-sm"><h3 className="font-bold text-amber-800">Macrociclo pendiente de configuración</h3><p className="text-sm text-amber-700">Asigna las fechas y el horario de este grupo para comenzar.</p><div className="mt-4 flex flex-wrap gap-2"><Link href={`/configuracion?seccion=planificacion&grupo=${grupoSeleccionado.id}`} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-bold text-white"><Settings className="h-4 w-4"/>Configurar este grupo</Link><button type="button" onClick={volverAGrupos} className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800"><ArrowLeft className="h-4 w-4"/>Volver a los grupos</button></div></div>
       ) : configuracion && grupoSeleccionado ? (
         <>
           <PlanAnualGrid 

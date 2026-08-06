@@ -83,7 +83,7 @@ export default function SuperAdminPage() {
   const [usuarios, setUsuarios] = useState<AdminUser[]>([]);
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
   const [creandoUsuario, setCreandoUsuario] = useState(false);
-  const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '' });
+  const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', clubId: '', rol: 'administrador_organizacion' });
   const [modalPassword, setModalPassword] = useState<{ userId: string; email: string; password: string; guardando: boolean } | null>(null);
   const [reiniciandoUsuarioId, setReiniciandoUsuarioId] = useState<string | null>(null);
 
@@ -167,7 +167,7 @@ export default function SuperAdminPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo crear el usuario');
 
-      setNuevoUsuario({ email: '', password: '', nombre: '', clubId: '' });
+      setNuevoUsuario({ email: '', password: '', nombre: '', clubId: '', rol: 'administrador_organizacion' });
       await cargarUsuarios();
       mostrarAviso('Usuario creado correctamente.', 'exito');
     } catch (error) {
@@ -954,6 +954,14 @@ export default function SuperAdminPage() {
                   <select required value={nuevoUsuario.clubId} onChange={e => setNuevoUsuario({ ...nuevoUsuario, clubId: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold">
                     <option value="">Seleccionar club...</option>
                     {clubes.map(club => <option key={club.id} value={club.id}>{club.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Rol</label>
+                  <select value={nuevoUsuario.rol} onChange={e => setNuevoUsuario({ ...nuevoUsuario, rol: e.target.value })} className="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold">
+                    <option value="administrador_organizacion">Administrador del club</option>
+                    <option value="entrenador_principal">Entrenador principal</option>
+                    <option value="entrenador_asistente">Entrenador asistente</option>
                   </select>
                 </div>
                 <button type="submit" disabled={creandoUsuario} className="mt-4 w-full py-3 bg-indigo-600 text-white rounded-xl font-black hover:bg-indigo-500 transition-colors flex justify-center items-center gap-2">
