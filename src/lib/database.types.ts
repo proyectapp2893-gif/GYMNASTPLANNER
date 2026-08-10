@@ -981,6 +981,7 @@ export type Database = {
           competencias_secundarias: Json | null
           created_at: string | null
           fecha_competencia: string | null
+          fecha_fin: string | null
           fecha_inicio: string | null
           grupo_id: string | null
           heredar_calendario_temporada: boolean
@@ -996,6 +997,7 @@ export type Database = {
           competencias_secundarias?: Json | null
           created_at?: string | null
           fecha_competencia?: string | null
+          fecha_fin?: string | null
           fecha_inicio?: string | null
           grupo_id?: string | null
           heredar_calendario_temporada?: boolean
@@ -1011,6 +1013,7 @@ export type Database = {
           competencias_secundarias?: Json | null
           created_at?: string | null
           fecha_competencia?: string | null
+          fecha_fin?: string | null
           fecha_inicio?: string | null
           grupo_id?: string | null
           heredar_calendario_temporada?: boolean
@@ -3243,6 +3246,7 @@ export type Database = {
           competencias_secundarias: Json | null
           created_at: string | null
           fecha_competencia: string | null
+          fecha_fin: string | null
           fecha_inicio: string | null
           grupo_id: string | null
           heredar_calendario_temporada: boolean | null

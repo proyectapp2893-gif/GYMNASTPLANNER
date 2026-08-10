@@ -102,7 +102,7 @@ export default function LoginPage() {
               logoUrl: clubData.logo_url || '/default-club-logo.png'
             });
           }
-          router.push('/');
+          router.push('/inicio');
         }
       } else {
         // FLUJO 2: SOLICITAR ACCESO (REGISTRO)

@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { isSuperAdminEmail } from './lib/admin'
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const esRutaPublica = pathname === '/' || pathname === '/login'
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -45,24 +48,13 @@ export async function proxy(request: NextRequest) {
 
   const esSuperadmin = isSuperAdminEmail(user?.email)
 
-  // 🚪 REGLA 1: Si no hay sesión y NO está en el login (/), mandarlo al login
-  if (!user && request.nextUrl.pathname !== '/') {
+  // 🚪 Si no hay sesión y no está en una pantalla pública, mandarlo al login.
+  if (!user && !esRutaPublica) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  if (user && request.nextUrl.pathname.startsWith('/superadmin') && !esSuperadmin) {
+  if (user && pathname.startsWith('/superadmin') && !esSuperadmin) {
     return NextResponse.redirect(new URL('/inicio', request.url))
-  }
-
-  // 🏠 REGLA 2: Si ya hay sesión y está en el login (/), mandarlo a su panel correspondiente
-  if (user && request.nextUrl.pathname === '/') {
-    // Si eres tú (el dueño), te manda al panel maestro
-    if (esSuperadmin) {
-      return NextResponse.redirect(new URL('/superadmin', request.url))
-    } else {
-      // Si es un entrenador, lo manda a la nueva pantalla de Inicio
-      return NextResponse.redirect(new URL('/inicio', request.url))
-    }
   }
 
   return response

@@ -6,6 +6,7 @@ import { useClubStore } from '../../../store/useClubStore' // 🔥 NUEVO: Import
 import { ClipboardList, Filter, Save, Activity, Loader2, CheckCircle2, XCircle, History, PlusCircle, Calendar, TrendingUp, Trash2 } from 'lucide-react'
 import { analyzePhysicalTest, type RawPhysicalTestResults } from '../../lib/physical-tests'
 import type { Atleta, EvaluacionFisica, Grupo } from '../../lib/types'
+import BulkPhysicalTestRecorder from '../../components/physical-tests/BulkPhysicalTestRecorder'
 
 const RESULTADOS_INICIALES: RawPhysicalTestResults = {
   dominadas: '', lagartijas: '', soga: '', 
@@ -30,6 +31,7 @@ export default function TestFisicos() {
   const [historial, setHistorial] = useState<EvaluacionFisica[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
   const [vistaActiva, setVistaActiva] = useState<'nueva' | 'historial'>('nueva')
+  const [modoRegistro, setModoRegistro] = useState<'colectivo' | 'individual'>('colectivo')
   const [notificacion, setNotificacion] = useState({ mostrar: false, mensaje: '', tipo: '' })
   
   const [resultados, setResultados] = useState<RawPhysicalTestResults>(RESULTADOS_INICIALES)
@@ -168,7 +170,14 @@ export default function TestFisicos() {
         <p className="text-slate-500 mt-2 font-medium">Batería de pruebas para medir fuerza, potencia y flexibilidad.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="mb-5 flex gap-2 rounded-xl bg-slate-100 p-1.5">
+        <button onClick={() => setModoRegistro('colectivo')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${modoRegistro === 'colectivo' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}>Todas las gimnastas</button>
+        <button onClick={() => setModoRegistro('individual')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black ${modoRegistro === 'individual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}>Registro individual e historial</button>
+      </div>
+
+      {modoRegistro === 'colectivo' && <BulkPhysicalTestRecorder />}
+
+      <div className={`${modoRegistro === 'individual' ? 'grid' : 'hidden'} grid-cols-1 lg:grid-cols-3 gap-8`}>
         
         {/* PANEL IZQUIERDO */}
         <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">

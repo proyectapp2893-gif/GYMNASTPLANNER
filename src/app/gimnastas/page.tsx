@@ -1,12 +1,11 @@
 import Link from 'next/link'
 import { Search, UserRound, Users } from 'lucide-react'
-import { getGymnasts } from '../../lib/gymnasts/server'
-import { getGymnastGroups } from '../../lib/gymnasts/server'
+import { getGymnastsPageData } from '../../lib/gymnasts/list-server'
 import GymnastRegistrationForm from '../../components/gymnasts/GymnastRegistrationForm'
 import GymnastExcelImport from '../../components/gymnasts/GymnastExcelImport'
 
 export default async function GymnastsPage() {
-  const [gymnasts,groups]=await Promise.all([getGymnasts(),getGymnastGroups()])
+  const { gymnasts, groups } = await getGymnastsPageData()
   return <div className="min-h-screen bg-slate-50 p-4 md:p-8">
     <header className="mx-auto mb-6 max-w-7xl">
       <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Seguimiento individual</p>

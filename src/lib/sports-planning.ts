@@ -1,5 +1,6 @@
 export type PlanningConfig = {
   fecha_inicio?: string | null
+  fecha_fin?: string | null
   fecha_competencia?: string | null
   semanas_totales?: number | null
   semanas_preparatorio?: number | null

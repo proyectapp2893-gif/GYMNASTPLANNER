@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore'
-import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2, Boxes, ChevronRight, UsersRound, LayoutDashboard } from 'lucide-react'
+import { PlusCircle, Trash2, Loader2, CheckCircle2, XCircle, Shield, Settings, AlertTriangle, Save, CalendarDays, Calculator, Clock, Upload, Building2, Boxes, ChevronRight, UsersRound, LayoutDashboard, Sparkles } from 'lucide-react'
 import GestorInventario from '../../components/dashboard/GestorInventario' 
 import type { Grupo } from '../../lib/types'
 import Image from 'next/image'
@@ -21,6 +21,9 @@ const HORARIO_BASE: DiaHorario[] = [
   { dia: 'Viernes', enfoque: 'Barras, Suelo y Acrobacia', aparatos: 'Barras, Suelo', lugar: 'Gimnasio Principal', hora: '4:00 PM - 7:00 PM' },
   { dia: 'Sábado', enfoque: 'Control Técnico y Repaso Rutinas', aparatos: 'Todos', lugar: 'Gimnasio Principal', hora: '8:00 AM - 12:00 PM' }
 ]
+
+const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+const ordenarHorario = (items: DiaHorario[]) => [...items].sort((a, b) => DIAS_SEMANA.indexOf(a.dia) - DIAS_SEMANA.indexOf(b.dia))
 
 export default function ConfiguracionGeneral() {
   return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="h-10 w-10 animate-spin text-indigo-600" /></div>}><ConfiguracionContenido /></Suspense>
@@ -62,12 +65,15 @@ function ConfiguracionContenido() {
   const [grupoActivo, setGrupoActivo] = useState<string>('')
   const [guardandoConfig, setGuardandoConfig] = useState(false)
   const [fechaInicio, setFechaInicio] = useState('')
+  const [fechaFin, setFechaFin] = useState('')
   const [fechaCompetencia, setFechaCompetencia] = useState('')
   // 🔥 NUEVO: Estado para las competencias preparatorias
   const [competenciasSecundarias, setCompetenciasSecundarias] = useState<CompetenciaSecundaria[]>([])
   const [calculo, setCalculo] = useState({ totales: 0, preparatorio: 0, competitivo: 0, general: 0, especial: 0 })
 
   const [horario, setHorario] = useState(HORARIO_BASE)
+  const [diasSugeridos, setDiasSugeridos] = useState(4)
+  const [generandoHorario, setGenerandoHorario] = useState(false)
 
   const cargarGrupos = useCallback(async () => {
     if (!clubId) return
@@ -172,12 +178,14 @@ function ConfiguracionContenido() {
       const { data } = await supabase.from('configuracion_grupos_efectiva').select('*').eq('grupo_id', grupoActivo).single()
       if (data) {
         if (data.fecha_inicio) setFechaInicio(data.fecha_inicio)
+        if (data.fecha_fin) setFechaFin(data.fecha_fin)
         if (data.fecha_competencia) setFechaCompetencia(data.fecha_competencia)
         if (Array.isArray(data.horario_semanal)) setHorario(data.horario_semanal as DiaHorario[])
         // 🔥 NUEVO: Cargar competencias secundarias
         if (Array.isArray(data.competencias_secundarias)) setCompetenciasSecundarias(data.competencias_secundarias as CompetenciaSecundaria[])
       } else {
         setFechaInicio('')
+        setFechaFin('')
         setFechaCompetencia('')
         setHorario(HORARIO_BASE)
         setCompetenciasSecundarias([]) // 🔥 NUEVO: Reiniciar si no hay data
@@ -188,9 +196,9 @@ function ConfiguracionContenido() {
   }, [grupoActivo])
 
   useEffect(() => {
-    if (fechaInicio && fechaCompetencia) {
+    if (fechaInicio && fechaFin) {
       const inicio = new Date(fechaInicio)
-      const final = new Date(fechaCompetencia)
+      const final = new Date(fechaFin)
       const diferenciaTiempo = final.getTime() - inicio.getTime()
       const diasTotales = Math.ceil(diferenciaTiempo / (1000 * 3600 * 24))
       
@@ -203,28 +211,57 @@ function ConfiguracionContenido() {
         setCalculo({ totales: semanasTotales, preparatorio: prep, competitivo: comp, general: gral, especial: esp })
       }
     }
-  }, [fechaInicio, fechaCompetencia])
+  }, [fechaInicio, fechaFin])
 
   const manejarCambioHorario = (index: number, campo: keyof DiaHorario, valor: string) => {
     const nuevoHorario = [...horario]
     nuevoHorario[index] = { ...nuevoHorario[index], [campo]: valor }
-    setHorario(nuevoHorario)
+    setHorario(campo === 'dia' ? ordenarHorario(nuevoHorario) : nuevoHorario)
+  }
+
+  const agregarDiaEntrenamiento = () => {
+    const diaDisponible = DIAS_SEMANA.find(dia => !horario.some(item => item.dia === dia))
+    if (!diaDisponible) return mostrarToast('Ya están configurados todos los días de la semana.', 'error')
+    setHorario(ordenarHorario([...horario, { dia: diaDisponible, enfoque: '', aparatos: '', lugar: '', hora: '' }]))
+  }
+
+  const eliminarDiaEntrenamiento = (index: number) => {
+    setHorario(horario.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  const sugerirHorario = async () => {
+    if (!grupoActivo) return mostrarToast('Selecciona un grupo primero', 'error')
+    setGenerandoHorario(true)
+    try {
+      const response = await fetch('/api/ia/horario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ groupId: grupoActivo, days: diasSugeridos }) })
+      const result = await response.json() as { horario?: DiaHorario[]; error?: string }
+      if (!response.ok || !result.horario) throw new Error(result.error || 'No se pudo generar el horario')
+      setHorario(ordenarHorario(result.horario))
+      mostrarToast('Propuesta creada. Revísala y guarda los ajustes.', 'exito')
+    } catch { mostrarToast('No se pudo generar la propuesta de horario.', 'error') }
+    finally { setGenerandoHorario(false) }
   }
 
   const guardarConfiguracion = async () => {
     if (!grupoActivo) return mostrarToast("Selecciona un grupo primero", "error")
+    if (!fechaInicio || !fechaFin) return mostrarToast("Define el inicio y el fin de la temporada", "error")
+    if (fechaFin < fechaInicio) return mostrarToast("El fin de temporada no puede ser anterior al inicio", "error")
+    if (fechaCompetencia && (fechaCompetencia < fechaInicio || fechaCompetencia > fechaFin)) return mostrarToast("La competencia fundamental debe estar dentro de la temporada", "error")
+    if (horario.length === 0) return mostrarToast("Configura al menos un día de entrenamiento", "error")
+    if (horario.some(dia => !dia.enfoque.trim() || !dia.aparatos.trim() || !dia.hora.trim())) return mostrarToast("Completa el enfoque, los aparatos y el horario de cada día", "error")
     setGuardandoConfig(true)
     try {
       const { error } = await supabase.from('configuracion_grupos').upsert({
         grupo_id: grupoActivo,
         heredar_calendario_temporada: false,
         fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
         fecha_competencia: fechaCompetencia,
         competencias_secundarias: competenciasSecundarias, // 🔥 NUEVO: Guardar en DB
         semanas_totales: calculo.totales,
         semanas_preparatorio: calculo.preparatorio,
         semanas_competitivo: calculo.competitivo,
-        horario_semanal: horario
+        horario_semanal: ordenarHorario(horario)
       }, { onConflict: 'grupo_id' })
 
       if (error) throw error
@@ -284,6 +321,7 @@ function ConfiguracionContenido() {
           <ConfigCard href="/configuracion?seccion=grupos" icon={<Shield />} title="Grupos y niveles" description="Crea equipos y define su nivel técnico." />
           <ConfigCard href="/configuracion?seccion=inventario" icon={<Boxes />} title="Inventario" description="Aparatos, implementos y recursos disponibles." />
           <ConfigCard href="/configuracion/temporadas" icon={<CalendarDays />} title="Temporadas del club" description="Define fechas y competencias una vez y aplícalas a varios grupos." />
+          <ConfigCard href="/configuracion?seccion=planificacion" icon={<Clock />} title="Horarios y distribución semanal" description="Define días, horarios, enfoques y aparatos para cada grupo y nivel." />
           <ConfigCard href="/dashboard" icon={<LayoutDashboard />} title="Planificación anual" description="Consulta el macrociclo heredado y los ajustes de cada grupo." />
           <ConfigCard href="/configuracion/catalogos-individuales" icon={<Settings />} title="Catálogos" description="Pruebas, estados, errores y criterios configurables." />
         </div>
@@ -405,9 +443,13 @@ function ConfiguracionContenido() {
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Inicio de Pretemporada</label>
                   <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 text-slate-700 font-bold" />
                 </div>
+                <div className="mb-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Fin de Temporada</label>
+                  <input type="date" min={fechaInicio || undefined} value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-bold" />
+                </div>
                 <div>
                   <label className="block text-[10px] font-black text-rose-600 uppercase mb-1">Competencia Fundamental</label>
-                  <input type="date" value={fechaCompetencia} onChange={(e) => setFechaCompetencia(e.target.value)} className="w-full p-3 bg-rose-50 border border-rose-200 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 text-rose-700 font-bold" />
+                  <input type="date" min={fechaInicio || undefined} max={fechaFin || undefined} value={fechaCompetencia} onChange={(e) => setFechaCompetencia(e.target.value)} className="w-full p-3 bg-rose-50 border border-rose-200 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 text-rose-700 font-bold" />
                 </div>
 
                 {/* 🔥 NUEVO: SECCIÓN DE COMPETENCIAS SECUNDARIAS */}
@@ -497,30 +539,26 @@ function ConfiguracionContenido() {
             </div>
 
             <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-6 uppercase tracking-wider"><Clock className="w-4 h-4 text-indigo-500" /> Horario Semanal del Grupo</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-widest font-black">
-                      <th className="p-3 rounded-tl-xl">Día</th>
-                      <th className="p-3 w-1/3">Enfoque Físico/Técnico</th>
-                      <th className="p-3">Aparatos</th>
-                      <th className="p-3">Lugar</th>
-                      <th className="p-3 rounded-tr-xl">Horario</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm divide-y divide-slate-100">
-                    {horario.map((dia, index) => (
-                      <tr key={index} className="hover:bg-slate-50 transition-colors group">
-                        <td className="p-3 font-black text-slate-700">{dia.dia}</td>
-                        <td className="p-3"><input type="text" value={dia.enfoque} onChange={(e) => manejarCambioHorario(index, 'enfoque', e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-indigo-400 outline-none py-1 font-medium text-slate-600 transition-colors" /></td>
-                        <td className="p-3"><input type="text" value={dia.aparatos} onChange={(e) => manejarCambioHorario(index, 'aparatos', e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-indigo-400 outline-none py-1 font-medium text-slate-600 text-xs transition-colors" /></td>
-                        <td className="p-3"><input type="text" value={dia.lugar} onChange={(e) => manejarCambioHorario(index, 'lugar', e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-indigo-400 outline-none py-1 text-slate-500 text-xs transition-colors" /></td>
-                        <td className="p-3"><input type="text" value={dia.hora} onChange={(e) => manejarCambioHorario(index, 'hora', e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-indigo-400 outline-none py-1 text-slate-800 text-xs font-black whitespace-nowrap transition-colors" /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 uppercase tracking-wider"><Clock className="w-4 h-4 text-indigo-500" /> Horario Semanal del Grupo</h3>
+                  <p className="mt-1 text-xs text-slate-500">Cada fila representa una sesión semanal que se usará para distribuir cargas y aparatos.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2"><select value={diasSugeridos} onChange={event => setDiasSugeridos(Number(event.target.value))} aria-label="Días por semana" className="rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-xs font-black text-indigo-700">{DIAS_SEMANA.map((_, index) => <option key={index + 1} value={index + 1}>{index + 1} días</option>)}</select><button type="button" onClick={sugerirHorario} disabled={generandoHorario} className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-50">{generandoHorario ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Sugerir con IA</button><button type="button" onClick={agregarDiaEntrenamiento} disabled={horario.length === DIAS_SEMANA.length} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-xs font-black text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"><PlusCircle className="h-4 w-4" /> Añadir día</button></div>
+              </div>
+              <div className="space-y-4">
+                {horario.map((dia, index) => (
+                  <article key={`${dia.dia}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition hover:border-indigo-200 hover:bg-white">
+                    <div className="mb-4 flex items-center justify-between gap-3"><select value={dia.dia} onChange={(e) => manejarCambioHorario(index, 'dia', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400">{DIAS_SEMANA.map(nombreDia => <option key={nombreDia} value={nombreDia} disabled={nombreDia !== dia.dia && horario.some(item => item.dia === nombreDia)}>{nombreDia}</option>)}</select><button type="button" onClick={() => eliminarDiaEntrenamiento(index)} title={`Eliminar ${dia.dia}`} className="rounded-lg p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-5 w-5" /></button></div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 md:col-span-2">Técnica y objetivo físico<textarea rows={3} value={dia.enfoque} onChange={(e) => manejarCambioHorario(index, 'enfoque', e.target.value)} className="resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium normal-case tracking-normal text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400" /></label>
+                      <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">Aparatos oficiales<input type="text" value={dia.aparatos} onChange={(e) => manejarCambioHorario(index, 'aparatos', e.target.value)} placeholder="Salto, Barras Asimétricas" className="rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold normal-case tracking-normal text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-400" /></label>
+                      <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">Lugar<input type="text" value={dia.lugar} onChange={(e) => manejarCambioHorario(index, 'lugar', e.target.value)} className="rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium normal-case tracking-normal text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400" /></label>
+                      <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 md:col-span-2">Horario<input type="text" value={dia.hora} onChange={(e) => manejarCambioHorario(index, 'hora', e.target.value)} className="rounded-xl border border-slate-200 bg-white p-3 text-sm font-black normal-case tracking-normal text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400" /></label>
+                    </div>
+                  </article>
+                ))}
+                {horario.length === 0 && <div className="rounded-xl border-2 border-dashed border-slate-200 p-8 text-center text-sm font-medium text-slate-500">Este grupo no tiene días de entrenamiento. Pulsa &quot;Añadir día&quot; para comenzar.</div>}
               </div>
             </div>
           </div>

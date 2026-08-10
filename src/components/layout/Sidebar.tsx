@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useClubStore } from '../../../store/useClubStore';
 import { supabase } from '../../lib/supabase';
 import { Home, LayoutDashboard, Users, Dumbbell, ClipboardList, Award, Trophy, Settings, LogOut, BrainCircuit } from 'lucide-react';
@@ -22,18 +22,12 @@ const MENU_ITEMS = [
 export default function Sidebar() {
   const { nombreClub, logoUrl, clearClubData } = useClubStore();
   const pathname = usePathname();
-  const router = useRouter();
 
   const handleCerrarSesion = async () => {
     await supabase.auth.signOut();
     if (clearClubData) clearClubData();
     window.location.replace('/');
   };
-
-  useEffect(() => {
-    MENU_ITEMS.forEach((item) => router.prefetch(item.href));
-    router.prefetch('/configuracion');
-  }, [router]);
 
   if (pathname === '/' || pathname === '/login' || pathname === '/superadmin' || /^\/gimnastas\/[^/]+/.test(pathname)) return null;
 
@@ -70,37 +64,43 @@ export default function Sidebar() {
           const Icon = item.icon;
           
           return (
-            <button 
+            <Link
               key={item.name} 
-              onClick={() => router.push(item.href)} 
+              href={item.href}
+              prefetch={false}
               title={item.name}
-              className={`flex w-full items-center justify-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200 md:justify-start ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`relative flex w-full items-center justify-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200 md:justify-start ${
                 isActive 
-                  ? 'bg-indigo-500/10 text-indigo-400' 
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-400/40'
                   : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
               }`}
             >
-              <Icon size={18} className={isActive ? 'text-indigo-400' : 'text-slate-500'} />
+              {isActive && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white" aria-hidden />}
+              <Icon size={18} className={isActive ? 'text-white' : 'text-slate-500'} />
               <span className="hidden md:inline">{item.name}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>
 
       {/* 5. Botones de Configuración y Cerrar Sesión compactos */}
       <div className="flex shrink-0 flex-col gap-2 border-t border-slate-800/50 p-2 md:p-4">
-        <button 
-          onClick={() => router.push('/configuracion')}
+        <Link
+          href="/configuracion"
+          prefetch={false}
           title="Configuración"
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold shadow-sm transition-colors ${
-            pathname?.startsWith('/configuracion')
-              ? 'bg-indigo-600 text-white shadow-indigo-500/25' 
+          aria-current={pathname?.startsWith('/configuracion') && !pathname?.startsWith('/configuracion/catalogos-individuales') ? 'page' : undefined}
+          className={`relative flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold shadow-sm transition-colors ${
+            pathname?.startsWith('/configuracion') && !pathname?.startsWith('/configuracion/catalogos-individuales')
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-400/40'
               : 'bg-slate-800 text-slate-300 hover:bg-indigo-600 hover:text-white'
           }`}
         >
+          {pathname?.startsWith('/configuracion') && !pathname?.startsWith('/configuracion/catalogos-individuales') && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white" aria-hidden />}
           <Settings size={18} />
           <span className="hidden md:inline">Configuración</span>
-        </button>
+        </Link>
         
         <button 
           onClick={handleCerrarSesion}
