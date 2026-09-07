@@ -6,9 +6,9 @@ import { useClubStore } from '../../../store/useClubStore'
 import { Users, Activity, Trophy, Calendar, Dumbbell, Award, Flame, Loader2, AlertCircle, ChevronLeft, ChevronRight, Filter, X, Edit3, PlusCircle, CheckCircle2, ShieldCheck, Wind } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import TermometroFisicoCard from '../../components/dashboard/TermometroFisico'
-import { analyzePhysicalTest, type RawPhysicalTestResults } from '../../lib/physical-tests'
+import { buildTeamPhysicalSummary, type PhysicalSessionRow, type TeamPhysicalMetric } from '../../lib/team-physical-summary'
 import { getSessionExerciseCount, getSessionPhaseExercises } from '../../lib/session-exercise-summary'
-import type { Competencia, JsonObject, Sesion } from '../../lib/types'
+import type { JsonObject, Sesion } from '../../lib/types'
 
 type DosificacionSesion = string | {
   avanzado?: string
@@ -42,9 +42,9 @@ export default function InicioPage() {
   const router = useRouter()
   const { clubId, nombreClub } = useClubStore() 
 
-  const [stats, setStats] = useState({ atletas: 0, grupos: 0 })
-  const [proximoEvento, setProximoEvento] = useState<Competencia | null>(null)
-  const [rendimiento, setRendimiento] = useState({ dominadas: 0, lagartijas: 0 })
+  const [stats, setStats] = useState({ atletas: 0, grupos: 0, niveles: 0 })
+  const [proximoEvento, setProximoEvento] = useState<{ nombre: string; fecha: string; tipo: string } | null>(null)
+  const [metricasFisicas, setMetricasFisicas] = useState<TeamPhysicalMetric[]>([])
   const [cargando, setCargando] = useState(true)
   const [timeoutAlcanzado, setTimeoutAlcanzado] = useState(false)
   
@@ -97,46 +97,35 @@ export default function InicioPage() {
 
       // 1. Cargar Estadísticas (Atletas y Grupos)
       const { count: countAtletas } = await supabase.from('atletas').select('*', { count: 'exact', head: true }).eq('club_id', clubId)
-      const { count: countGrupos } = await supabase.from('grupos').select('*', { count: 'exact', head: true }).eq('club_id', clubId)
-      setStats({ atletas: countAtletas || 0, grupos: countGrupos || 0 })
+      const { data: gruposData } = await supabase.from('grupos').select('nivel').eq('club_id', clubId)
+      const nivelesUnicos = Array.from(new Set((gruposData || []).map(g => g.nivel?.trim()).filter((nivel): nivel is string => Boolean(nivel))))
+        .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
+      setStats({ atletas: countAtletas || 0, grupos: gruposData?.length || 0, niveles: nivelesUnicos.length })
+      setNivelesDisponibles(nivelesUnicos)
 
       // 2. Cargar Próximo Evento
       const hoyStr = formatearFechaLocal(new Date())
-      const { data: evento } = await supabase.from('competencias').select('*').eq('club_id', clubId).gte('fecha', hoyStr).order('fecha', { ascending: true }).limit(1).single()
-      if (evento) setProximoEvento(evento as Competencia)
+      const [{ data: evento }, { data: temporadas }] = await Promise.all([
+        supabase.from('competencias').select('nombre,fecha,tipo').eq('club_id', clubId).gte('fecha', hoyStr).order('fecha', { ascending: true }).limit(1).maybeSingle(),
+        supabase.from('temporadas').select('competencia_principal_nombre,fecha_competencia_principal').eq('club_id', clubId).is('deleted_at', null).gte('fecha_competencia_principal', hoyStr).order('fecha_competencia_principal', { ascending: true }).limit(1).maybeSingle(),
+      ])
+      const eventoTemporada = temporadas?.fecha_competencia_principal ? {
+        nombre: temporadas.competencia_principal_nombre?.trim() || 'Competencia principal',
+        fecha: temporadas.fecha_competencia_principal,
+        tipo: 'Competencia principal',
+      } : null
+      const candidatos = [evento, eventoTemporada].filter((item): item is { nombre: string; fecha: string; tipo: string } => Boolean(item?.fecha))
+      setProximoEvento(candidatos.sort((a, b) => a.fecha.localeCompare(b.fecha))[0] || null)
 
       // 3. Cargar Datos del Termómetro (Evaluaciones)
-      const { data: evaluaciones } = await supabase.from('evaluaciones_fisicas').select('resultados').eq('club_id', clubId).order('created_at', { ascending: false }).limit(20) 
-      if (evaluaciones && evaluaciones.length > 0) {
-        let totalDominadas = 0, totalLagartijas = 0, validos = 0
-        evaluaciones.forEach(ev => {
-          const resultados = isRecord(ev.resultados) ? ev.resultados : {}
-          const analisis = isRecord(resultados.analisis) ? resultados.analisis : analyzePhysicalTest(resultados as RawPhysicalTestResults)
-          const metricas = isRecord(analisis.metricas_normalizadas) ? analisis.metricas_normalizadas : {}
-          const dom = Number(metricas.dominadas_reps ?? resultados.dominadas)
-          const lag = Number(metricas.lagartijas_reps ?? resultados.lagartijas)
-          if (!isNaN(dom) && !isNaN(lag)) { 
-            totalDominadas += dom; 
-            totalLagartijas += lag; 
-            validos++ 
-          }
-        })
-        if (validos > 0) {
-          setRendimiento({ 
-            dominadas: Math.round((totalDominadas / validos) * 10) / 10, 
-            lagartijas: Math.round((totalLagartijas / validos) * 10) / 10 
-          })
-        }
-      } else {
-         setRendimiento({ dominadas: 0, lagartijas: 0 })
-      }
-
-      // 4. Cargar Niveles para el Filtro
-      const { data: gruposData } = await supabase.from('grupos').select('nivel').eq('club_id', clubId)
-      if (gruposData) {
-        const nivelesUnicos = Array.from(new Set(gruposData.map(g => g.nivel).filter((nivel): nivel is string => Boolean(nivel))))
-        setNivelesDisponibles(nivelesUnicos)
-      }
+      const { data: sesionesFisicas } = await supabase
+        .from('sesiones_pruebas_fisicas')
+        .select('atleta_id,fecha,resultados_pruebas_fisicas(valor,unidad,prueba_id,catalogo_pruebas_fisicas(nombre))')
+        .eq('club_id', clubId)
+        .is('deleted_at', null)
+        .order('fecha', { ascending: false })
+        .limit(200)
+      setMetricasFisicas(buildTeamPhysicalSummary((sesionesFisicas || []) as PhysicalSessionRow[]))
 
       setCargando(false)
     }
@@ -229,7 +218,10 @@ export default function InicioPage() {
               <span className="text-5xl font-black text-slate-800">{stats.atletas}</span>
               <span className="text-sm font-bold text-slate-400 mb-1.5">Gimnastas</span>
             </div>
-            <p className="text-sm font-bold text-blue-600 mt-2">Distribuidas en {stats.grupos} niveles</p>
+            <p className="text-sm font-bold text-blue-600 mt-2">{stats.niveles} niveles · {stats.grupos} grupos</p>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {nivelesDisponibles.map((nivel) => <span key={nivel} className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700">{nivel}</span>)}
+            </div>
           </div>
         </div>
 
@@ -243,7 +235,7 @@ export default function InicioPage() {
             {proximoEvento ? (
               <>
                 <h4 className="text-2xl font-black text-slate-800 leading-tight truncate">{proximoEvento.nombre}</h4>
-                <p className="text-sm font-bold text-amber-600 mt-2 capitalize">{new Date(proximoEvento.fecha).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                <p className="text-sm font-bold text-amber-600 mt-2 capitalize">{new Date(`${proximoEvento.fecha}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
                 <span className="inline-block mt-3 bg-slate-100 text-slate-600 text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider">{proximoEvento.tipo}</span>
               </>
             ) : (
@@ -256,7 +248,7 @@ export default function InicioPage() {
         </div>
 
         {/* Tarjeta: Termómetro Físico */}
-        <TermometroFisicoCard dominadasActual={rendimiento.dominadas} lagartijasActual={rendimiento.lagartijas} />
+        <TermometroFisicoCard metricas={metricasFisicas} />
       </div>
 
       {/* MINI CALENDARIO OPERATIVO */}
