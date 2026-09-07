@@ -17,13 +17,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { data: tests, error: testsError } = await supabase.from('catalogo_pruebas_fisicas').select('id,unidad').in('id', testIds).eq('activo', true).or(`club_id.is.null,club_id.eq.${clubId}`)
   if (testsError || tests?.length !== testIds.length) return NextResponse.json({ error: 'Una o más pruebas no están autorizadas' }, { status: 403 })
   if(input.data.batteryId){const {data:items}=await supabase.from('baterias_pruebas_fisicas').select('id,bateria_pruebas_items(prueba_id,requerida)').eq('id',input.data.batteryId).eq('club_id',clubId).eq('activa',true).maybeSingle();if(!items)return NextResponse.json({error:'Batería no autorizada'},{status:403});const configured=new Set((Array.isArray(items.bateria_pruebas_items)?items.bateria_pruebas_items:[]).map(item=>String(item.prueba_id)));if(testIds.some(id=>!configured.has(id)))return NextResponse.json({error:'La evaluación contiene pruebas fuera de la batería'},{status:400})}
-  const { data: session, error: sessionError } = await supabase.from('sesiones_pruebas_fisicas').insert({ club_id: clubId, atleta_id: gymnast.id, bateria_id:input.data.batteryId, fecha: input.data.date, evaluador_id: user.id, observaciones: input.data.notes }).select('id').single()
-  if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 400 })
+  let sessionQuery = supabase.from('sesiones_pruebas_fisicas').select('id').eq('club_id', clubId).eq('atleta_id', gymnast.id).eq('fecha', input.data.date).is('deleted_at', null)
+  sessionQuery = input.data.batteryId ? sessionQuery.eq('bateria_id', input.data.batteryId) : sessionQuery.is('bateria_id', null)
+  const { data: existingSession, error: lookupError } = await sessionQuery.order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 400 })
+  let session = existingSession
+  let createdSession = false
+  if (!session) {
+    const created = await supabase.from('sesiones_pruebas_fisicas').insert({ club_id: clubId, atleta_id: gymnast.id, bateria_id:input.data.batteryId, fecha: input.data.date, evaluador_id: user.id, observaciones: input.data.notes }).select('id').single()
+    if (created.error) return NextResponse.json({ error: created.error.message }, { status: 400 })
+    session = created.data
+    createdSession = true
+  }
   const units = new Map(tests.map(test => [String(test.id), String(test.unidad)]))
-  const { error: resultsError } = await supabase.from('resultados_pruebas_fisicas').insert(input.data.results.map(result => ({ club_id: clubId, sesion_prueba_id: session.id, prueba_id: result.testId, valor: result.value, unidad: units.get(result.testId), observaciones: result.notes })))
+  const { error: resultsError } = await supabase.from('resultados_pruebas_fisicas').upsert(input.data.results.map(result => ({ club_id: clubId, sesion_prueba_id: session.id, prueba_id: result.testId, valor: result.value, unidad: units.get(result.testId), observaciones: result.notes })), { onConflict: 'sesion_prueba_id,prueba_id' })
   if (resultsError) {
-    await supabase.from('sesiones_pruebas_fisicas').delete().eq('id', session.id).eq('club_id', clubId)
+    if (createdSession) await supabase.from('sesiones_pruebas_fisicas').delete().eq('id', session.id).eq('club_id', clubId)
     return NextResponse.json({ error: resultsError.message }, { status: 400 })
   }
-  return NextResponse.json({ assessmentId: session.id }, { status: 201 })
+  return NextResponse.json({ assessmentId: session.id, updated: !createdSession }, { status: createdSession ? 201 : 200 })
 }

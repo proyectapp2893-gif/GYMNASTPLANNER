@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
-import { GripVertical, Flame, Dumbbell, Activity, ShieldCheck, Wind, Loader2, Archive, Save, Info, X, CalendarDays, Clock, Search, ChevronUp, ChevronDown, Users, CheckCircle2, XCircle, Edit3, Printer, BrainCircuit, Sparkles, AlertTriangle, PlayCircle, Globe, Maximize, Zap, AlignJustify, Ruler, Award } from 'lucide-react'
+import { GripVertical, Flame, Dumbbell, Activity, ShieldCheck, Wind, Loader2, Archive, Save, Info, X, CalendarDays, Clock, Search, ChevronUp, ChevronDown, Users, CheckCircle2, XCircle, Edit3, Printer, BrainCircuit, Sparkles, AlertTriangle, PlayCircle, Globe, Maximize, Zap, AlignJustify, Ruler, Award, Plus, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore' 
 import { getCompetitionProximityForDate, getSessionTimeDistribution } from '../../lib/sports-planning'
 import { getSessionDayProfile } from '../../lib/session-focus'
+import { exerciseMatchesSessionSection } from '../../lib/session-exercise-filter'
 import Image from 'next/image'
 
 const parsearFecha = (fechaStr: string) => {
@@ -48,6 +49,7 @@ interface EjercicioSesion {
   descripcion_corta?: string | null
   video_url?: string | null
   aparato?: string | null
+  dificultad?: string | null
   dosificacion?: string | DosificacionPorGrupo | null
 }
 
@@ -130,6 +132,9 @@ export default function ConstructorSesion({
   const [guardando, setGuardando] = useState(false)
   const [haySesionParaGuardar, setHaySesionParaGuardar] = useState(false)
   const [ejercicioSeleccionado, setEjercicioSeleccionado] = useState<EjercicioSesion | null>(null)
+  const [selectorDestino, setSelectorDestino] = useState<{ id: string; nombre: string } | null>(null)
+  const [busquedaSelector, setBusquedaSelector] = useState('')
+  const [idsSelector, setIdsSelector] = useState<string[]>([])
   
   const [sesionId, setSesionId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
@@ -235,7 +240,7 @@ export default function ConstructorSesion({
     const fetchEjercicios = async () => {
       const { data: clubData } = await supabase.from('clubs').select('acceso_biblioteca_elite').eq('id', clubId).single()
       const tieneAccesoElite = clubData?.acceso_biblioteca_elite || false;
-      let query = supabase.from('ejercicios').select('id, nombre, categoria, descripcion, video_url, aparato')
+      let query = supabase.from('ejercicios').select('id, nombre, categoria, descripcion, descripcion_corta, video_url, aparato, dificultad')
       if (tieneAccesoElite) query = query.or(`club_id.eq.${clubId},club_id.is.null`)
       else query = query.eq('club_id', clubId)
       const { data } = await query
@@ -245,8 +250,10 @@ export default function ConstructorSesion({
           contenido: e.nombre,
           categoria: e.categoria,
           descripcion: e.descripcion,
+          descripcion_corta: e.descripcion_corta,
           video_url: e.video_url,
-          aparato: e.aparato
+          aparato: e.aparato,
+          dificultad: e.dificultad
         })))
       }
     }
@@ -420,6 +427,30 @@ export default function ConstructorSesion({
     return disponibles
   }, [columnas, todosLosEjercicios, filtroActivo, filtroAparato, busqueda])
 
+  const ejerciciosSelector = useMemo(() => {
+    if (!selectorDestino) return []
+    const idsEnUso = new Set(subclavesEstaticas.flatMap(key => (columnas[key] || []).map(e => e.id)))
+    const termino = normalizarTexto(busquedaSelector)
+
+    return todosLosEjercicios
+      .filter(e => !idsEnUso.has(e.id))
+      .filter(e => exerciseMatchesSessionSection(e, selectorDestino.id, selectorDestino.nombre, nivelSeleccionado))
+      .filter(e => !termino || normalizarTexto(`${e.contenido} ${e.categoria || ''} ${e.aparato || ''}`).includes(termino))
+      .sort((a, b) => a.contenido.localeCompare(b.contenido, 'es'))
+  }, [busquedaSelector, columnas, nivelSeleccionado, selectorDestino, todosLosEjercicios])
+
+  const abrirSelector = (id: string, nombre: string) => {
+    setSelectorDestino({ id, nombre })
+    setBusquedaSelector('')
+    setIdsSelector([])
+  }
+
+  const cerrarSelector = () => {
+    setSelectorDestino(null)
+    setBusquedaSelector('')
+    setIdsSelector([])
+  }
+
   const calcularDosisUnica = async (ejercicio: EjercicioSesion, colId: string) => {
     try {
       const response = await fetch('/api/ia', {
@@ -457,6 +488,28 @@ export default function ConstructorSesion({
          setHaySesionParaGuardar(true)
       }
     } catch { mostrarNotificacion('Error al calcular carga', 'error') }
+  }
+
+  const insertarEjerciciosSeleccionados = () => {
+    if (!selectorDestino || idsSelector.length === 0) return
+    const seleccionados = idsSelector
+      .map(id => todosLosEjercicios.find(e => e.id === id))
+      .filter((e): e is EjercicioSesion => Boolean(e))
+      .map(e => ({
+        ...e,
+        dosificacion: { avanzado: '⏳ Calculando...', base: '⏳ Calculando...', desarrollo: '⏳ Calculando...' }
+      }))
+
+    const destinoId = selectorDestino.id
+    setColumnas(prev => {
+      const nuevas = clonarColumnas(prev)
+      nuevas[destinoId] = [...(nuevas[destinoId] || []), ...seleccionados]
+      nuevas.banco = (nuevas.banco || []).filter(e => !idsSelector.includes(e.id))
+      return nuevas
+    })
+    setHaySesionParaGuardar(true)
+    cerrarSelector()
+    seleccionados.forEach(ejercicio => void calcularDosisUnica(ejercicio, destinoId))
   }
 
   const autocompletarSesion = async () => {
@@ -747,9 +800,13 @@ export default function ConstructorSesion({
                               <div ref={provided.innerRef} {...provided.droppableProps} className={`flex-1 rounded-md min-h-[60px] transition-colors ${snapshot.isDraggingOver ? 'bg-black/10' : 'bg-transparent'}`}>
                                 
                                 {columnas[sub.id]?.length === 0 && !cargandoDia && (
-                                  <div className="flex items-center justify-center h-full min-h-[50px] border border-dashed border-black/10 rounded m-1 opacity-40">
-                                    <span className="text-[9px] font-bold text-slate-500 text-center px-2">Arrastrar aquí</span>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirSelector(sub.id, sub.nombre)}
+                                    className="flex items-center justify-center h-full w-[calc(100%_-_0.5rem)] min-h-[50px] border border-dashed border-black/10 rounded m-1 text-slate-500/60 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white/60 transition-colors"
+                                  >
+                                    <span className="text-[9px] font-bold text-center px-2">Arrastrar aquí o haz clic para elegir</span>
+                                  </button>
                                 )}
 
                                 {cargandoDia ? (
@@ -780,6 +837,13 @@ export default function ConstructorSesion({
                               </div>
                             )}
                           </Droppable>
+                          <button
+                            type="button"
+                            onClick={() => abrirSelector(sub.id, sub.nombre)}
+                            className="mt-2 w-full min-h-9 rounded-md border border-dashed border-black/15 bg-white/40 text-[9px] font-black uppercase tracking-wider text-slate-500 hover:bg-white hover:border-indigo-300 hover:text-indigo-600 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Elegir ejercicios
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -892,6 +956,81 @@ export default function ConstructorSesion({
           </DragDropContext>
         </div>
       </div>
+
+      {/* SELECTOR MÚLTIPLE PARA UNA SUBDIVISIÓN */}
+      {selectorDestino && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 print:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="selector-ejercicios-titulo"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) cerrarSelector() }}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[88vh] shadow-2xl overflow-hidden border border-slate-200 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-start gap-4 p-5 border-b border-slate-100 bg-slate-50">
+              <div>
+                <h2 id="selector-ejercicios-titulo" className="text-lg font-black text-slate-800">Elegir ejercicios</h2>
+                <p className="text-xs font-bold text-indigo-600 mt-1">{selectorDestino.nombre}</p>
+                <p className="text-xs text-slate-500 mt-1">Puedes seleccionar varios. La carga se calculará según {objetivoFase}, {semanaActual} y {diaActivo}.</p>
+              </div>
+              <button type="button" onClick={cerrarSelector} aria-label="Cerrar selector" className="text-slate-400 hover:text-rose-500 transition-colors"><X className="w-6 h-6" /></button>
+            </div>
+
+            <div className="p-5 border-b border-slate-100">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  autoFocus
+                  type="search"
+                  value={busquedaSelector}
+                  onChange={(event) => setBusquedaSelector(event.target.value)}
+                  placeholder="Buscar por nombre, categoría o aparato..."
+                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 bg-slate-50/50">
+              {ejerciciosSelector.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-400">No hay ejercicios disponibles con esta búsqueda.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {ejerciciosSelector.map(ejercicio => {
+                    const seleccionado = idsSelector.includes(ejercicio.id)
+                    return (
+                      <button
+                        type="button"
+                        key={ejercicio.id}
+                        aria-pressed={seleccionado}
+                        onClick={() => setIdsSelector(prev => seleccionado ? prev.filter(id => id !== ejercicio.id) : [...prev, ejercicio.id])}
+                        className={`text-left rounded-xl border p-4 transition-all ${seleccionado ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm'}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${seleccionado ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 text-transparent'}`}><Check className="w-3.5 h-3.5" /></span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold text-slate-800 leading-snug">{ejercicio.contenido}</span>
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">{[ejercicio.categoria, ejercicio.aparato, ejercicio.dificultad].filter(Boolean).join(' • ') || 'General'}</span>
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-white flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+              <span className="text-xs font-bold text-slate-500">{idsSelector.length} {idsSelector.length === 1 ? 'ejercicio seleccionado' : 'ejercicios seleccionados'}</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={cerrarSelector} className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                <button type="button" onClick={insertarEjerciciosSeleccionados} disabled={idsSelector.length === 0} className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  <Plus className="w-4 h-4" /> Insertar {idsSelector.length || ''}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL EJERCICIO SELECCIONADO */}
       {ejercicioSeleccionado && (

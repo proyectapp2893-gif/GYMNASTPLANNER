@@ -53,6 +53,7 @@ export const saveIndividualSessionSchema=z.object({
   plannedIntensity:z.number().min(0).max(100).nullable().optional(),
   plannedVolume:z.number().min(0).max(100).nullable().optional(),
   notes:z.string().trim().max(2000).nullable().optional(),
+  readinessOverrideReason:z.string().trim().min(10).max(1000).nullable().optional(),
   blocks:z.array(sessionBlockSchema).length(5),
 }).superRefine((value,context)=>{
   const unique=new Set(value.blocks.map(block=>block.phase))

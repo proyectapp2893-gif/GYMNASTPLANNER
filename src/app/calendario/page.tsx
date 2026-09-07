@@ -130,19 +130,19 @@ export default function CalendarioPage() {
       <div className="max-w-7xl mx-auto">
         
         {/* CABECERA */}
-        <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-          <div>
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Calendario Anual</h1>
+        <div className="mb-8 flex flex-col items-start justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:p-6">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-tight text-slate-800 sm:text-3xl">Calendario Anual</h1>
             <p className="text-sm font-bold text-slate-500 mt-1">{nombreClub || 'Cargando club...'}</p>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
             <button onClick={irAHoy} className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
               Hoy
             </button>
-            <div className="flex items-center gap-4 bg-slate-900 text-white px-4 py-2 rounded-xl shadow-md">
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-900 px-3 py-2 text-white shadow-md sm:gap-4 sm:px-4">
               <button onClick={mesAnterior} className="p-1 hover:bg-slate-700 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5" /></button>
-              <span className="w-40 text-center font-black uppercase tracking-widest text-sm">
+              <span className="min-w-0 flex-1 text-center text-xs font-black uppercase tracking-wider sm:w-40 sm:flex-none sm:text-sm sm:tracking-widest">
                 {meses[fechaActual.getMonth()]} {fechaActual.getFullYear()}
               </span>
               <button onClick={mesSiguiente} className="p-1 hover:bg-slate-700 rounded-lg transition-colors"><ChevronRight className="w-5 h-5" /></button>
@@ -159,7 +159,8 @@ export default function CalendarioPage() {
         </div>
 
         {/* CUADRÍCULA DEL CALENDARIO */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+        <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-xl">
+          <div className="min-w-[700px]">
           {/* Días de la semana */}
           <div className="grid grid-cols-7 bg-slate-900 border-b border-slate-200">
             {diasSemana.map(dia => (
@@ -205,13 +206,14 @@ export default function CalendarioPage() {
               );
             })}
           </div>
+          </div>
         </div>
       </div>
 
       {/* MODAL DE DETALLE DEL DÍA */}
       {diaSeleccionado && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 zoom-in-95 duration-200">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
               <div>
                 <h2 className="text-xl font-black text-slate-800 capitalize">

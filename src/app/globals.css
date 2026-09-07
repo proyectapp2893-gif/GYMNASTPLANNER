@@ -18,3 +18,68 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+main, section, article, form, fieldset, header, nav, div {
+  min-width: 0;
+}
+
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
+h1, h2, h3, p, td, th, label {
+  overflow-wrap: anywhere;
+}
+
+input, select, textarea, button {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+
+  table th, table td {
+    padding: 0.625rem;
+  }
+
+  [role="dialog"] {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+  }
+
+  /* Las filas con columnas de ancho fijo se apilan en teléfonos. */
+  [class~="grid-cols-[1fr_150px_auto]"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [class~="min-w-60"] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Evita que los tracks implícitos de fieldset adopten el ancho mínimo
+     de etiquetas largas y empujen sus acciones fuera del viewport. */
+  fieldset.grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  fieldset.grid > div:has(> button[aria-label^="Eliminar prueba"]) {
+    width: calc(100vw - 6rem);
+    max-width: 100%;
+  }
+}

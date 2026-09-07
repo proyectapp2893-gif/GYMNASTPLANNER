@@ -169,7 +169,7 @@ export default function Ejercicios() {
 
       {modalAbierto && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl animate-in zoom-in-95 md:p-8">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-slate-800">Nuevo Ejercicio Manual</h2>
               <button onClick={() => setModalAbierto(false)} className="p-2 bg-slate-100 text-slate-500 rounded-full hover:bg-rose-100 hover:text-rose-600 transition-colors">
@@ -183,7 +183,7 @@ export default function Ejercicios() {
                 <input type="text" value={nuevoEj.nombre} onChange={e => setNuevoEj({...nuevoEj, nombre: e.target.value})} className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-rose-500 font-bold text-slate-800 placeholder-slate-300" placeholder="Ej. Doble Mortal Atrás..." />
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* 🔥 SELECT DE CATEGORÍA */}
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Categoría</label>
@@ -216,7 +216,7 @@ export default function Ejercicios() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* 🔥 SELECT DE DIFICULTAD */}
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase">Dificultad / Nivel</label>

@@ -36,6 +36,11 @@ export interface Ejercicio {
   descripcion?: string | null
   descripcion_corta?: string | null
   rangos_repeticiones?: string | null
+  patrones_fundamentales?: string[] | null
+  prerrequisitos?: string[] | null
+  requisitos_fisicos?: string[] | null
+  nivel_impacto?: 'bajo'|'moderado'|'alto'|null
+  bilateralidad?: 'bilateral'|'derecha'|'izquierda'|'no_aplica'|null
   video_url?: string | null
   club_id?: string | null
   created_at?: string | null

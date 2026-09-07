@@ -41,6 +41,11 @@ export type ExerciseInput = {
   etiquetas?: unknown
   video_url?: unknown
   club_id?: unknown
+  patrones_fundamentales?: unknown
+  prerrequisitos?: unknown
+  requisitos_fisicos?: unknown
+  nivel_impacto?: unknown
+  bilateralidad?: unknown
 }
 
 export function normalizeExerciseInput(input: ExerciseInput, clubId?: string | null) {
@@ -54,6 +59,11 @@ export function normalizeExerciseInput(input: ExerciseInput, clubId?: string | n
     rangos_repeticiones: cleanString(input.rangos_repeticiones, 80) || '10-20 reps',
     etiquetas: normalizeTags(input.etiquetas),
     video_url: normalizeVideoUrl(input.video_url),
+    ...('patrones_fundamentales' in input ? { patrones_fundamentales: normalizeList(input.patrones_fundamentales) } : {}),
+    ...('prerrequisitos' in input ? { prerrequisitos: normalizeList(input.prerrequisitos) } : {}),
+    ...('requisitos_fisicos' in input ? { requisitos_fisicos: normalizeList(input.requisitos_fisicos) } : {}),
+    ...('nivel_impacto' in input ? { nivel_impacto: ['bajo','moderado','alto'].includes(String(input.nivel_impacto)) ? String(input.nivel_impacto) : null } : {}),
+    ...('bilateralidad' in input ? { bilateralidad: ['bilateral','derecha','izquierda','no_aplica'].includes(String(input.bilateralidad)) ? String(input.bilateralidad) : null } : {}),
     ...(clubId ? { club_id: clubId } : {}),
   }
 }
@@ -148,6 +158,11 @@ function normalizeTags(value: unknown) {
     .filter(Boolean)
     .slice(0, 5)
     .join(', ')
+}
+
+function normalizeList(value:unknown){
+  const values=Array.isArray(value)?value:typeof value==='string'?value.split(','):[]
+  return values.map(item=>cleanString(item,80)).filter(Boolean).slice(0,20)
 }
 
 function cleanString(value: unknown, maxLength: number) {

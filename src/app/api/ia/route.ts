@@ -13,6 +13,7 @@ import { generateGeminiTextRest } from '../../../lib/gemini-rest'
 import { getAuthenticatedClub } from '../../../lib/supabase-server'
 import { summarizePhysicalTestsForAI } from '../../../lib/physical-tests'
 import { getCompetitionProximityForDate } from '../../../lib/sports-planning'
+import { getApprovedSportsKnowledgeContext } from '../../../lib/sports-governance/context'
 
 const apiKey = process.env.GEMINI_API_KEY || ''
 
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     }
 
     const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual } = parsed.data
+    const conocimientoAprobado = await getApprovedSportsKnowledgeContext(['seguridad','carga','tecnica','recuperacion','bienestar','competencia'])
     const proximidadCompetencia = getCompetitionProximityForDate(
       fechaSesionActual,
       competenciasSecundarias.map(comp => comp.fecha)
@@ -105,11 +107,8 @@ export async function POST(request: Request) {
             TEST FISICOS RECIENTES DEL GRUPO:
             ${JSON.stringify(resumenResultados)}
             
-            BAREMOS DEL NIVEL ${nivel}:
-            - Niveles 1-2: Dominadas(1-3), Canoa(20s), Lagartijas(5).
-            - Niveles 3-4: Dominadas(5-8), Canoa(45s), Lagartijas(15).
-            - Niveles 5+: Dominadas(10+), Canoa(60s+), Lagartijas(20+).
-            REGLA: Si aparecen alertas o promedios menores a 45/100, reduce carga, aumenta progresion tecnica y evita trabajo al fallo.
+            Estos resultados son indicadores internos y tendencias, no baremos clínicos ni normas universales.
+            Úsalos para comparar la evolución del grupo y señalar datos que requieren revisión del entrenador.
           `
         }
       }
@@ -143,6 +142,8 @@ export async function POST(request: Request) {
         ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: reduce carga pesada, evita fallo muscular y prioriza calidad tecnica.` : ''}
         ${contextoInventario}
         ${contextoTestFisicos}
+        CONOCIMIENTO DEPORTIVO APROBADO Y TRAZABLE: ${JSON.stringify(conocimientoAprobado)}
+        Si no existe una regla aprobada aplicable, indícalo y no inventes una norma.
 
         EJERCICIO A CALCULAR:
         - Nombre: ${String(ejercicio.contenido || ejercicio.nombre || '')}
@@ -178,6 +179,8 @@ export async function POST(request: Request) {
       ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: estamos en descarga/taper. Reduce preparacion fisica pesada y prioriza rutinas, tecnica limpia, recuperacion y confianza.` : ''}
       ${contextoInventario}
       ${contextoTestFisicos}
+      CONOCIMIENTO DEPORTIVO APROBADO Y TRAZABLE: ${JSON.stringify(conocimientoAprobado)}
+      No conviertas una fuente histórica o una regla no aprobada en una prescripción.
 
       BASE DE DATOS DE EJERCICIOS A USAR: ${JSON.stringify(catalogoPrompt)}
 

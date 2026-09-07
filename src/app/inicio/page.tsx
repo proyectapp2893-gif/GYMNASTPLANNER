@@ -7,6 +7,7 @@ import { Users, Activity, Trophy, Calendar, Dumbbell, Award, Flame, Loader2, Ale
 import { useRouter } from 'next/navigation'
 import TermometroFisicoCard from '../../components/dashboard/TermometroFisico'
 import { analyzePhysicalTest, type RawPhysicalTestResults } from '../../lib/physical-tests'
+import { getSessionExerciseCount, getSessionPhaseExercises } from '../../lib/session-exercise-summary'
 import type { Competencia, JsonObject, Sesion } from '../../lib/types'
 
 type DosificacionSesion = string | {
@@ -19,6 +20,11 @@ interface EjercicioResumen {
   id?: string
   contenido?: string
   nombre?: string
+  descripcion?: string | null
+  descripcion_corta?: string | null
+  aparato?: string | null
+  categoria?: string | null
+  dificultad?: string | null
   dosificacion?: DosificacionSesion | null
 }
 
@@ -185,11 +191,12 @@ export default function InicioPage() {
   }
 
   const tabsModal = [
-    { id: 'calentamiento', label: 'Calentamiento', icon: Flame, color: 'text-amber-500', bg: 'bg-amber-50' },
-    { id: 'prep-fisica', label: 'Prep. Física', icon: Dumbbell, color: 'text-rose-500', bg: 'bg-rose-50' },
-    { id: 'tecnico', label: 'Técnico', icon: Activity, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { id: 'flexibilidad', label: 'Flexibilidad', icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { id: 'cierre', label: 'Calma', icon: Wind, color: 'text-slate-500', bg: 'bg-slate-100' }
+    { id: 'calentamiento', label: 'Calentamiento', icon: Flame, active: 'border-amber-500 text-amber-600 bg-amber-50/50', badge: 'bg-amber-100 text-amber-700' },
+    { id: 'prep-fisica', label: 'Prep. Física', icon: Dumbbell, active: 'border-rose-500 text-rose-600 bg-rose-50/50', badge: 'bg-rose-100 text-rose-700' },
+    { id: 'tecnico', label: 'Técnico', icon: Activity, active: 'border-blue-500 text-blue-600 bg-blue-50/50', badge: 'bg-blue-100 text-blue-700' },
+    { id: 'rutinas', label: 'Rutinas', icon: Award, active: 'border-violet-500 text-violet-600 bg-violet-50/50', badge: 'bg-violet-100 text-violet-700' },
+    { id: 'flexibilidad', label: 'Flexibilidad', icon: ShieldCheck, active: 'border-emerald-500 text-emerald-600 bg-emerald-50/50', badge: 'bg-emerald-100 text-emerald-700' },
+    { id: 'cierre', label: 'Calma', icon: Wind, active: 'border-slate-500 text-slate-600 bg-slate-50', badge: 'bg-slate-100 text-slate-600' }
   ];
 
   return (
@@ -290,9 +297,11 @@ export default function InicioPage() {
                 
                 const tieneSesion = sesionesDelDia.length > 0;
                 const infoSesion = tieneSesion ? sesionesDelDia[0] : null;
+                const cantidadEjercicios = getSessionExerciseCount(infoSesion?.ejercicios);
+                const sesionPreparada = cantidadEjercicios > 0;
 
                 return (
-                  <div key={index} onClick={() => abrirPantallaFlotante(dia, infoSesion)} className={`flex-1 rounded-2xl border flex flex-col cursor-pointer transition-all hover:shadow-md relative overflow-hidden group ${esHoy ? 'border-indigo-400 ring-4 ring-indigo-50' : 'border-slate-200 hover:border-indigo-300'} ${tieneSesion ? 'bg-indigo-50/30' : 'bg-white'}`}>
+                  <div key={index} onClick={() => abrirPantallaFlotante(dia, infoSesion)} className={`flex-1 rounded-2xl border flex flex-col cursor-pointer transition-all hover:shadow-md relative overflow-hidden group ${esHoy ? 'border-indigo-400 ring-4 ring-indigo-50' : 'border-slate-200 hover:border-indigo-300'} ${sesionPreparada ? 'bg-indigo-50/30' : 'bg-white'}`}>
                     <div className={`p-3 border-b ${esHoy ? 'border-indigo-100 bg-indigo-50/50' : 'border-slate-100 bg-slate-50/50'} flex justify-between items-center`}>
                       <span className={`text-xs font-black uppercase tracking-widest ${esHoy ? 'text-indigo-600' : 'text-slate-500'}`}>{diasSemanaNombres[dia.getDay()]}</span>
                       <span className={`text-sm font-bold w-6 h-6 flex items-center justify-center rounded-full ${esHoy ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-700'}`}>{dia.getDate()}</span>
@@ -303,7 +312,7 @@ export default function InicioPage() {
                           <div>
                             <div className="flex items-center gap-1.5 mb-2">
                               <Activity className="w-3.5 h-3.5 text-indigo-500" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Planificado</span>
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${sesionPreparada ? 'text-indigo-600' : 'text-amber-700'}`}>{sesionPreparada ? `Planificado · ${cantidadEjercicios}` : 'Borrador vacío'}</span>
                             </div>
                             <p className="text-xs font-bold text-slate-800 leading-tight line-clamp-2">{infoSesion?.objetivo}</p>
                           </div>
@@ -352,28 +361,38 @@ export default function InicioPage() {
                     {tabsModal.map(tab => {
                       const Icono = tab.icon;
                       const isActivo = tabActivoModal === tab.id;
-                      const count = sesionSeleccionadaModal.ejercicios?.[tab.id]?.length || 0;
+                      const count = getSessionPhaseExercises(sesionSeleccionadaModal.ejercicios, tab.id).length;
                       
                       return (
                         <button 
                           key={tab.id}
                           onClick={() => setTabActivoModal(tab.id)}
-                          className={`flex items-center gap-2 px-5 py-4 border-b-2 transition-colors whitespace-nowrap ${isActivo ? `border-${tab.color.split('-')[1]}-500 ${tab.color} bg-slate-50` : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
+                          className={`flex items-center gap-2 px-5 py-4 border-b-2 transition-colors whitespace-nowrap ${isActivo ? tab.active : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
                         >
                           <Icono className="w-4 h-4" />
                           <span className="font-bold text-sm">{tab.label}</span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isActivo ? tab.bg : 'bg-slate-100 text-slate-400'}`}>{count}</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isActivo ? tab.badge : 'bg-slate-100 text-slate-400'}`}>{count}</span>
                         </button>
                       )
                     })}
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                    {(sesionSeleccionadaModal.ejercicios?.[tabActivoModal] || []).length > 0 ? (
+                    {getSessionPhaseExercises(sesionSeleccionadaModal.ejercicios, tabActivoModal).length > 0 ? (
                       <div className="flex flex-col gap-3">
-                        {(sesionSeleccionadaModal.ejercicios?.[tabActivoModal] || []).map((ej, idx) => (
+                        {getSessionPhaseExercises(sesionSeleccionadaModal.ejercicios, tabActivoModal).map((ej, idx) => (
                           <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2 hover:border-indigo-300 transition-colors">
                             <h4 className="font-bold text-slate-800 text-base">{ej.contenido || ej.nombre}</h4>
+                            {(ej.aparato || ej.categoria || ej.dificultad) && (
+                              <div className="flex flex-wrap gap-2">
+                                {ej.aparato && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-indigo-700">{ej.aparato}</span>}
+                                {ej.categoria && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">{ej.categoria}</span>}
+                                {ej.dificultad && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">{ej.dificultad}</span>}
+                              </div>
+                            )}
+                            {(ej.descripcion_corta || ej.descripcion) && (
+                              <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{ej.descripcion_corta || ej.descripcion}</p>
+                            )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2 pt-3 border-t border-slate-100">
                               <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">

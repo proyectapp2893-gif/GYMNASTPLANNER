@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { calculatePlannedDuration,saveIndividualSessionSchema,validatePublishableSession } from '../../../../../lib/individual-sessions/schema'
 import { adaptGeneralSession } from '../../../../../lib/individual-sessions/general-adapter'
 import { getAuthenticatedClub } from '../../../../../lib/supabase-server'
+import {assessSessionReadiness,requiresCoachReview} from '../../../../../lib/athlete-readiness/engine'
 
 const requestSchema=z.object({action:z.enum(['draft','publish']).default('draft'),session:saveIndividualSessionSchema})
 
@@ -33,6 +34,20 @@ export async function POST(request:NextRequest,{params}:{params:Promise<{id:stri
   const group=Array.isArray(gymnast.grupos)?gymnast.grupos[0]:gymnast.grupos
   const user=(await supabase.auth.getUser()).data.user
   if(!user)return NextResponse.json({error:'No autenticado'},{status:401})
+  const exerciseIds=[...new Set(session.blocks.flatMap(block=>block.exercises.map(exercise=>exercise.exerciseId)))]
+  const [exerciseMetadata,development,latestCheckin,activeRestrictions,mastered]=await Promise.all([
+    exerciseIds.length?supabase.from('ejercicios').select('id,nombre,categoria,nivel_impacto,prerrequisitos,requisitos_fisicos,patrones_fundamentales').in('id',exerciseIds):Promise.resolve({data:[],error:null}),
+    supabase.from('atletas').select('etapa_desarrollo_revisada_at,etapas_desarrollo_deportivo(nombre)').eq('id',gymnast.id).maybeSingle(),
+    supabase.from('registros_desarrollo_atleta').select('fecha,disposicion,estres,confianza,miedo_reportado').eq('club_id',clubId).eq('atleta_id',gymnast.id).order('fecha',{ascending:false}).limit(1).maybeSingle(),
+    supabase.from('restricciones_atleta').select('zona_corporal,adaptaciones_temporales').eq('club_id',clubId).eq('atleta_id',gymnast.id).in('estado',['activa','en_revision']).is('deleted_at',null),
+    supabase.from('estado_elemento_atleta').select('porcentaje_dominio,elementos_tecnicos(nombre)').eq('club_id',clubId).eq('atleta_id',gymnast.id).gte('porcentaje_dominio',80),
+  ])
+  for(const query of[exerciseMetadata,development,latestCheckin,activeRestrictions,mastered])if(query.error)return NextResponse.json({error:'No fue posible verificar la preparación individual'},{status:500})
+  const stage=Array.isArray(development.data?.etapas_desarrollo_deportivo)?development.data.etapas_desarrollo_deportivo[0]:development.data?.etapas_desarrollo_deportivo
+  const readinessContext={stageName:typeof stage?.nombre==='string'?stage.nombre:null,stageReviewedAt:typeof development.data?.etapa_desarrollo_revisada_at==='string'?development.data.etapa_desarrollo_revisada_at:null,latestCheckin:latestCheckin.data?{date:String(latestCheckin.data.fecha),readiness:Number(latestCheckin.data.disposicion),stress:Number(latestCheckin.data.estres),confidence:Number(latestCheckin.data.confianza),reportedFear:Boolean(latestCheckin.data.miedo_reportado)}:null,restrictions:(activeRestrictions.data||[]).map(item=>({bodyArea:String(item.zona_corporal),adaptations:typeof item.adaptaciones_temporales==='string'?item.adaptaciones_temporales:null})),masteredSkills:(mastered.data||[]).flatMap(item=>{const skill=Array.isArray(item.elementos_tecnicos)?item.elementos_tecnicos[0]:item.elementos_tecnicos;return typeof skill?.nombre==='string'?[skill.nombre]:[]})}
+  const array=(value:unknown)=>Array.isArray(value)?value.filter((item):item is string=>typeof item==='string'):[]
+  const readinessFindings=assessSessionReadiness(readinessContext,(exerciseMetadata.data||[]).map(item=>({id:String(item.id),name:String(item.nombre),category:typeof item.categoria==='string'?item.categoria:null,impact:item.nivel_impacto==='bajo'||item.nivel_impacto==='moderado'||item.nivel_impacto==='alto'?item.nivel_impacto:null,prerequisites:array(item.prerrequisitos),physicalRequirements:array(item.requisitos_fisicos),fundamentalPatterns:array(item.patrones_fundamentales)})))
+  if(action==='publish'&&requiresCoachReview(readinessFindings)&&!session.readinessOverrideReason)return NextResponse.json({error:'La preparación individual requiere revisión del entrenador',issues:readinessFindings.filter(item=>item.level==='review').map(item=>item.title)},{status:422})
   const {data:individualPlan}=await supabase.from('planes_individuales').select('id').eq('club_id',clubId).eq('atleta_id',gymnast.id).is('deleted_at',null).order('created_at',{ascending:false}).limit(1).maybeSingle()
 
   if(session.sourceSessionId){const {data:source}=await supabase.from('sesiones').select('id').eq('id',session.sourceSessionId).eq('club_id',clubId).is('atleta_id',null).maybeSingle();if(!source)return NextResponse.json({error:'La sesión general de origen no pertenece a la organización'},{status:403})}
@@ -76,6 +91,8 @@ export async function POST(request:NextRequest,{params}:{params:Promise<{id:stri
   const versionNumber=Number(lastVersion?.numero_version||0)+1
   const {error:versionError}=await supabase.from('versiones_sesion').insert({club_id:clubId,sesion_id:result.data.id,numero_version:versionNumber,snapshot:{...session,action},motivo:action==='publish'?'Publicación de sesión':'Guardado de borrador',created_by:user.id})
   if(versionError)return NextResponse.json({error:'La sesión se guardó, pero no fue posible crear su versión histórica.'},{status:500})
+
+  if(session.readinessOverrideReason&&requiresCoachReview(readinessFindings))await supabase.from('auditoria').insert({club_id:clubId,usuario_id:user.id,entidad:'sesion',entidad_id:String(result.data.id),accion:'decision_preparacion_documentada',valor_nuevo:{hallazgos:readinessFindings},motivo:session.readinessOverrideReason,contexto:{motor:'readiness_deterministico_v1'}})
 
   let finalSession=result.data
   if(action==='publish'){

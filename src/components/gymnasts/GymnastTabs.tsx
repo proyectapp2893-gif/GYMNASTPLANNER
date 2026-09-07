@@ -4,10 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const tabs = [
-  ['resumen','Resumen'], ['planificacion','Planificación'], ['sesiones','Sesiones'],
+  ['resumen','Resumen'], ['desarrollo','Desarrollo'], ['planificacion','Planificación'], ['sesiones','Sesiones'],
   ['tecnica','Técnica'], ['preparacion-fisica','Preparación física'], ['evaluaciones','Evaluaciones'],
   ['objetivos','Objetivos'], ['cargas','Cargas'], ['evidencias','Evidencias'],
-  ['restricciones','Restricciones'], ['competencias','Competencias'], ['informes','Informes'], ['asistente-ia','Asistente IA'],
+  ['restricciones','Restricciones'], ['competencias','Competencias'], ['revisiones','Revisiones'], ['informes','Informes'], ['asistente-ia','Asistente IA'],
 ] as const
 
 export default function GymnastTabs({ gymnastId }: { gymnastId: string }) {

@@ -15,7 +15,7 @@ export default async function GymnastLayout({children,params}:{children:React.Re
       </div>
     </header>
     <GymnastTabs gymnastId={id}/>
-    <main className="p-4 md:p-8">{children}</main>
+    <div className="p-4 md:p-8">{children}</div>
   </div>
 }
 

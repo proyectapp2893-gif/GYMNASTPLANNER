@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useClubStore } from '../../../store/useClubStore';
 import { supabase } from '../../lib/supabase';
-import { Home, LayoutDashboard, Users, Dumbbell, ClipboardList, Award, Trophy, Settings, LogOut, BrainCircuit } from 'lucide-react';
+import { Home, LayoutDashboard, Users, Dumbbell, ClipboardList, Award, Trophy, Settings, LogOut, BrainCircuit, SlidersHorizontal } from 'lucide-react';
 import Image from 'next/image';
 
 const MENU_ITEMS = [
@@ -16,7 +16,7 @@ const MENU_ITEMS = [
   { name: 'Jueceo Oficial', href: '/puntuacion', icon: Award },
   { name: 'Resultados', href: '/ranking', icon: Trophy },
   { name: 'Análisis IA', href: '/analisis', icon: BrainCircuit },
-  { name: 'Catálogos', href: '/configuracion/catalogos-individuales', icon: Settings },
+  { name: 'Catálogos', href: '/configuracion/catalogos-individuales', icon: SlidersHorizontal },
 ];
 
 export default function Sidebar() {
@@ -29,15 +29,17 @@ export default function Sidebar() {
     window.location.replace('/');
   };
 
-  if (pathname === '/' || pathname === '/login' || pathname === '/superadmin' || /^\/gimnastas\/[^/]+/.test(pathname)) return null;
+  if (pathname === '/' || pathname === '/login' || pathname === '/reset-password' || pathname.startsWith('/superadmin') || /^\/gimnastas\/[^/]+/.test(pathname)) return null;
 
   return (
     // 🔥 1. Cambiamos de aside a div y usamos h-full para evitar la franja negra
-    <div className="flex h-full w-20 flex-col border-r border-slate-800/50 bg-[#0f172a] font-sans text-slate-300 shadow-2xl md:w-64">
+    <div className="flex h-full w-60 flex-col border-r border-slate-800/50 bg-[#0f172a] font-sans text-slate-300 shadow-2xl xl:w-72">
       
       {/* 2. Logo principal de GymnastPlanner más compacto */}
-      <div className="flex items-center justify-center py-5 border-b border-slate-800/50 shrink-0">
-        <Image src="/logo.png" alt="Logo GymnastPlanner" width={384} height={345} priority className="h-auto w-full max-w-[64px] object-contain drop-shadow-2xl transition-transform duration-300 hover:scale-105 md:max-w-[150px]" />
+      <div className="shrink-0 border-b border-slate-800/50 p-4 xl:p-5">
+        <Link href="/inicio" aria-label="Ir al inicio" className="relative block aspect-[1.55/1] overflow-hidden rounded-2xl border border-white/10 bg-white shadow-lg shadow-black/20 transition hover:border-cyan-300/50">
+          <Image src="/logo.png" alt="GymnastPlanner" fill priority sizes="(min-width: 1280px) 248px, 208px" className="object-cover object-[center_45%]" />
+        </Link>
       </div>
 
       {/* 3. Tarjeta de Club COMPACTA Y HORIZONTAL */}
@@ -70,7 +72,7 @@ export default function Sidebar() {
               prefetch={false}
               title={item.name}
               aria-current={isActive ? 'page' : undefined}
-              className={`relative flex w-full items-center justify-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200 md:justify-start ${
+              className={`relative flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200 ${
                 isActive 
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-400/40'
                   : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
@@ -78,7 +80,7 @@ export default function Sidebar() {
             >
               {isActive && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white" aria-hidden />}
               <Icon size={18} className={isActive ? 'text-white' : 'text-slate-500'} />
-              <span className="hidden md:inline">{item.name}</span>
+              <span>{item.name}</span>
             </Link>
           );
         })}
@@ -99,7 +101,7 @@ export default function Sidebar() {
         >
           {pathname?.startsWith('/configuracion') && !pathname?.startsWith('/configuracion/catalogos-individuales') && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-white" aria-hidden />}
           <Settings size={18} />
-          <span className="hidden md:inline">Configuración</span>
+          <span>Configuración</span>
         </Link>
         
         <button 
@@ -108,7 +110,7 @@ export default function Sidebar() {
           className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-500"
         >
           <LogOut size={18} />
-          <span className="hidden md:inline">Salir</span>
+          <span>Salir</span>
         </button>
       </div>
 

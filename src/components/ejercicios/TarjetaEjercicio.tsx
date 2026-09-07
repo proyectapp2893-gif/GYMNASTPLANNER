@@ -58,6 +58,11 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
     descripcion: ejercicio.descripcion || '',
     descripcion_corta: ejercicio.descripcion_corta || '', 
     rangos_repeticiones: ejercicio.rangos_repeticiones || '', 
+    patrones_fundamentales: (ejercicio.patrones_fundamentales||[]).join(', '),
+    prerrequisitos: (ejercicio.prerrequisitos||[]).join(', '),
+    requisitos_fisicos: (ejercicio.requisitos_fisicos||[]).join(', '),
+    nivel_impacto: ejercicio.nivel_impacto || '',
+    bilateralidad: ejercicio.bilateralidad || '',
   })
 
   const guardarCambios = async () => {
@@ -86,6 +91,9 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
 
       const datosAEnviar = normalizeExerciseInput({
         ...formData,
+        patrones_fundamentales: formData.patrones_fundamentales.split(',').map(value=>value.trim()).filter(Boolean),
+        prerrequisitos: formData.prerrequisitos.split(',').map(value=>value.trim()).filter(Boolean),
+        requisitos_fisicos: formData.requisitos_fisicos.split(',').map(value=>value.trim()).filter(Boolean),
         video_url: finalVideoUrl
       })
 
@@ -229,7 +237,7 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Categoría</label>
                   <select 
@@ -277,7 +285,7 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Dificultad</label>
                   <select 
@@ -330,6 +338,14 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
                   onChange={(e) => setFormData({...formData, descripcion_corta: e.target.value})}
                   className="w-full mt-1 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 bg-white placeholder-slate-400 focus:ring-2 focus:ring-rose-500 outline-none resize-none"
                 />
+              </div>
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-indigo-700">Preparación y clasificación</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-bold text-slate-600">Impacto<select value={formData.nivel_impacto} onChange={e=>setFormData({...formData,nivel_impacto:e.target.value as typeof formData.nivel_impacto})} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2.5"><option value="">Sin clasificar</option><option value="bajo">Bajo</option><option value="moderado">Moderado</option><option value="alto">Alto</option></select></label>
+                  <label className="text-xs font-bold text-slate-600">Lateralidad<select value={formData.bilateralidad} onChange={e=>setFormData({...formData,bilateralidad:e.target.value as typeof formData.bilateralidad})} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2.5"><option value="">Sin clasificar</option><option value="bilateral">Bilateral</option><option value="derecha">Derecha</option><option value="izquierda">Izquierda</option><option value="no_aplica">No aplica</option></select></label>
+                </div>
+                {[['patrones_fundamentales','Patrones fundamentales'],['prerrequisitos','Prerrequisitos técnicos'],['requisitos_fisicos','Requisitos físicos']].map(([key,label])=><label key={key} className="mt-3 block text-xs font-bold text-slate-600">{label}<input value={formData[key as keyof typeof formData]} onChange={e=>setFormData({...formData,[key]:e.target.value})} placeholder="Separar con comas" className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm"/></label>)}
               </div>
             </div>
 

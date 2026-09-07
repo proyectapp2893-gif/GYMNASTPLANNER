@@ -15,6 +15,10 @@ export type NormalizedPhysicalMetrics = {
 }
 
 export type PhysicalTestAnalysis = {
+  referencia: {
+    metodo: 'heuristica_interna_v1'
+    uso: 'seguimiento_no_baremo'
+  }
   metricas_normalizadas: NormalizedPhysicalMetrics
   resumen: {
     fuerza_brazos: number | null
@@ -73,6 +77,7 @@ export function analyzePhysicalTest(raw: RawPhysicalTestResults): PhysicalTestAn
   }
 
   return {
+    referencia: { metodo: 'heuristica_interna_v1', uso: 'seguimiento_no_baremo' },
     metricas_normalizadas: metricas,
     resumen,
     alertas: buildAlerts(metricas, resumen),
@@ -90,6 +95,7 @@ export function summarizePhysicalTestsForAI(evaluaciones: Array<{ resultados?: u
   const previous = analyses[1]
 
   return {
+    referencia: latest.referencia || { metodo: 'heuristica_interna_v1', uso: 'seguimiento_no_baremo' },
     ultimas_evaluaciones: analyses.length,
     promedio_grupo: {
       fuerza_brazos: averageScores(analyses.map(a => a.resumen.fuerza_brazos)),

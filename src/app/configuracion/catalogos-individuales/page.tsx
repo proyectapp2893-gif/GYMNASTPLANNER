@@ -2,15 +2,19 @@ import BatteryManager from '../../../components/gymnasts/BatteryManager'
 import CatalogManager from '../../../components/gymnasts/CatalogManager'
 import EvidenceSettings from '../../../components/gymnasts/EvidenceSettings'
 import LoadThresholdSettings from '../../../components/gymnasts/LoadThresholdSettings'
-import {getAdminCatalogWorkspace} from '../../../lib/gymnasts/server'
+import SportsGovernanceManager from '../../../components/gymnasts/SportsGovernanceManager'
+import OperationalReadinessPanel from '../../../components/gymnasts/OperationalReadinessPanel'
+import {getAdminCatalogWorkspace,getOperationalCalibration,getOperationalReadiness,getSportsGovernanceWorkspace} from '../../../lib/gymnasts/server'
 
 export default async function CatalogsPage(){
-  const data=await getAdminCatalogWorkspace()
+  const [data,governance,calibration,operational]=await Promise.all([getAdminCatalogWorkspace(),getSportsGovernanceWorkspace(),getOperationalCalibration(),getOperationalReadiness()])
   const tests=data.tests.map(item=>({id:String(item.id),name:String(item.nombre),code:String(item.codigo),unit:String(item.unidad),active:Boolean(item.activo),owned:String(item.club_id)===data.clubId}))
   return <div className="mx-auto min-h-screen max-w-7xl space-y-6 bg-slate-50 p-4 text-slate-950 md:p-6">
     <header><p className="text-xs font-black uppercase tracking-widest text-indigo-600">Administración deportiva</p><h1 className="text-3xl font-black">Catálogos del módulo individual</h1><p className="text-sm text-slate-500">Estados, aparatos, errores, niveles de ayuda, objetivos, pruebas y límites sin cambios de código.</p></header>
-    <div className="grid gap-5 lg:grid-cols-2"><LoadThresholdSettings initial={{weeklyIncrease:Number(data.loadSettings.aumento_semanal_aviso_pct),highRpe:Number(data.loadSettings.rpe_alto),highFatigue:Number(data.loadSettings.fatiga_alta)}}/><EvidenceSettings initialMaximumMb={Number(data.evidenceSettings.tamano_maximo_mb)}/></div>
+    <OperationalReadinessPanel status={operational}/>
+    <div className="grid gap-5 lg:grid-cols-2"><LoadThresholdSettings initial={{weeklyIncrease:Number(calibration.aumento_semanal_aviso_pct),highRpe:Number(calibration.rpe_alto),highFatigue:Number(calibration.fatiga_alta),lowReadiness:Number(calibration.disposicion_baja),intensityDeviation:Number(calibration.desviacion_intensidad_aviso),durationDeviation:Number(calibration.desviacion_duracion_aviso_pct),recentSessions:Number(calibration.ventana_sesiones_recientes),prerequisiteMastery:Number(calibration.dominio_prerrequisito_pct),checkinFreshnessDays:Number(calibration.vigencia_checkin_dias)}}/><EvidenceSettings initialMaximumMb={Number(data.evidenceSettings.tamano_maximo_mb)}/></div>
     <CatalogManager catalogs={data.catalogs.map(item=>({id:String(item.id),name:String(item.nombre),code:String(item.codigo),editable:Boolean(item.editable)}))} items={data.items.map(item=>({id:String(item.id),catalogId:String(item.catalogo_id),name:String(item.nombre),code:String(item.codigo),active:Boolean(item.activo),owned:String(item.club_id)===data.clubId}))} tests={tests}/>
     <BatteryManager tests={tests.filter(test=>test.active)} batteries={data.batteries.map(battery=>({id:String(battery.id),name:String(battery.nombre),description:String(battery.descripcion||''),active:Boolean(battery.activa),testIds:(Array.isArray(battery.bateria_pruebas_items)?battery.bateria_pruebas_items:[]).sort((a,b)=>Number(a.orden)-Number(b.orden)).map(item=>String(item.prueba_id))}))}/>
+    <SportsGovernanceManager sources={governance.sources.map(item=>({id:String(item.id),title:String(item.titulo),organization:String(item.organizacion),version:typeof item.version==='string'?item.version:null,validity:String(item.estado_vigencia),usageScope:String(item.alcance_uso),owned:String(item.club_id)===governance.clubId}))} stages={governance.stages.map(item=>({id:String(item.id),name:String(item.nombre),order:Number(item.orden),description:typeof item.descripcion==='string'?item.descripcion:null,owned:String(item.club_id)===governance.clubId}))} rules={governance.rules.map(item=>{const source=Array.isArray(item.fuentes_conocimiento_deportivo)?item.fuentes_conocimiento_deportivo[0]:item.fuentes_conocimiento_deportivo;return{id:String(item.id),title:String(item.titulo),category:String(item.categoria),actionLevel:String(item.nivel_accion),status:String(item.estado),sourceTitle:String(source?.titulo||'Sin fuente'),owned:String(item.club_id)===governance.clubId}})}/>
   </div>
 }

@@ -17,6 +17,8 @@ let clubId=''
 let gymnastId=''
 let groupId=''
 let generalSessionId=''
+let physicalTestId=''
+let physicalBatteryId=''
 
 test.beforeAll(async()=>{
   clubId=(await row(service.from('clubs').insert({nombre:`Club E2E ${marker}`,estado:'aprobado'}).select('id').single())).id
@@ -31,6 +33,9 @@ test.beforeAll(async()=>{
   const inheritedExercise=await row(service.from('ejercicios').insert({club_id:clubId,nombre:inheritedName,categoria:'Calentamiento',aparato:'General / Ninguno'}).select('id').single())
   generalSessionId=(await row(service.from('sesiones').insert({club_id:clubId,grupo_id:groupId,nivel:'Nivel 4',objetivo:'Sesión general heredable',fecha_calendario:'2026-08-05',ejercicios:{calentamiento_general:[{id:inheritedExercise.id,contenido:inheritedName,aparato:'General / Ninguno'}]}}).select('id').single())).id
   gymnastId=(await row(service.from('atletas').insert({club_id:clubId,grupo_id:group.id,nombre:'Gimnasta Responsive',fecha_nacimiento:'2014-08-04',objetivo_temporada:'Preparación segura'}).select('id').single())).id
+  physicalTestId=(await row(service.from('catalogo_pruebas_fisicas').insert({club_id:clubId,codigo:`salto_${marker}`,nombre:`Salto E2E ${marker}`,unidad:'repeticiones',mayor_es_mejor:true,activo:true}).select('id').single())).id
+  physicalBatteryId=(await row(service.from('baterias_pruebas_fisicas').insert({club_id:clubId,nombre:`Batería E2E ${marker}`,activa:true,created_by:userId}).select('id').single())).id
+  await row(service.from('bateria_pruebas_items').insert({bateria_id:physicalBatteryId,prueba_id:physicalTestId,orden:0,requerida:true}).select('prueba_id').single())
   await row(service.from('retroalimentaciones').insert({club_id:clubId,atleta_id:gymnastId,comentario_entrenador:'Comentario interno E2E',proximo_foco:'Solo equipo técnico',visible_familia:false,created_by:userId}).select('id').single())
   await row(service.from('retroalimentaciones').insert({club_id:clubId,atleta_id:gymnastId,comentario_entrenador:'Comentario familiar E2E',proximo_foco:'Continuar con confianza',visible_familia:true,created_by:userId}).select('id').single())
 })
@@ -38,7 +43,7 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{if(clubId)await service.from('clubs').delete().eq('id',clubId);if(userId)await service.auth.admin.deleteUser(userId)})
 
 test('módulo individual es navegable y no desborda el viewport',async({page})=>{
-  test.setTimeout(60000)
+  test.setTimeout(120000)
   await page.goto('/')
   await page.getByPlaceholder('coach@club.com').fill(email)
   await page.locator('input[type="password"]').fill(password)
@@ -68,6 +73,58 @@ test('módulo individual es navegable y no desborda el viewport',async({page})=>
   await expect(page.getByText('Informe autorizado para familia')).toBeVisible()
   await expect(page.getByText('Comentario familiar E2E')).toBeVisible()
   await expect(page.getByText('Comentario interno E2E')).toHaveCount(0)
+
+  await page.goto('/evaluaciones')
+  await page.getByLabel('Pruebas / batería').selectOption(physicalBatteryId)
+  await page.getByLabel('Fecha').fill('2026-08-10')
+  const collectiveValue=page.getByLabel(`Salto E2E ${marker} de Gimnasta Responsive`)
+  await collectiveValue.fill('17')
+  await page.reload()
+  await expect(page.getByLabel(`Salto E2E ${marker} de Gimnasta Responsive`)).toHaveValue('17')
+  await page.getByLabel(`Salto E2E ${marker} de Gimnasta Responsive`).focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByText('Resultado guardado automáticamente en la nube.')).toBeVisible({timeout:20000})
+  await page.getByRole('button',{name:'Guardar resultados'}).click()
+  await expect(page.getByText(/guardadas correctamente/)).toBeVisible()
+  await expect(page.getByLabel(`Salto E2E ${marker} de Gimnasta Responsive`)).toHaveValue('17')
+  await expect(page.getByRole('link',{name:'Crear prueba o batería'})).toBeVisible()
+  await page.getByRole('button',{name:'Historial colectivo'}).click()
+  const collectiveHistory=page.getByRole('dialog',{name:'Fechas de pruebas realizadas'})
+  await expect(collectiveHistory).toBeVisible()
+  await collectiveHistory.getByRole('button',{name:/Ver resultados en la planilla/}).first().click()
+  await expect(collectiveHistory).not.toBeVisible()
+  await expect(page.getByLabel(`Salto E2E ${marker} de Gimnasta Responsive`)).toHaveValue('17')
+
+  await page.getByRole('button',{name:/Registro individual e historial/}).click()
+  await page.getByLabel('Pruebas / batería').selectOption(physicalBatteryId)
+  await page.getByLabel('Gimnasta').selectOption(gymnastId)
+  await page.getByLabel('Fecha').fill('2026-08-11')
+  await page.getByLabel(`Salto E2E ${marker}`).fill('19')
+  await page.getByRole('button',{name:'Guardar resultados'}).click()
+  await expect(page.getByText('19 repeticiones').first()).toBeVisible()
+  await expect(page.getByText('Anterior: 17').first()).toBeVisible()
+  await expect(page.getByText('Mejora destacada').first()).toBeVisible()
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1)
+
+  await page.goto('/configuracion/catalogos-individuales')
+  const batterySection=page.locator('section').filter({has:page.getByRole('heading',{name:'Baterías de pruebas físicas'})})
+  await batterySection.getByRole('button',{name:'Agregar nueva prueba'}).click()
+  await batterySection.getByLabel('Nombre de la prueba').fill(`Potencia personalizada ${marker}`)
+  await batterySection.getByLabel('Grupo').selectOption('piernas')
+  await batterySection.getByLabel('Unidad').selectOption('centimetros')
+  await batterySection.getByLabel('Criterio de evolución').selectOption('higher')
+  await batterySection.getByLabel('Instrucciones').fill('Registrar el mejor de tres intentos.')
+  await batterySection.getByRole('button',{name:'Crear prueba'}).click()
+  await expect(page.getByText('Prueba creada. Ya puedes incluirla en una batería.')).toBeVisible()
+  await expect(page.getByText(`Potencia personalizada ${marker}`,{exact:true})).toBeVisible()
+  const batteryCard=batterySection.locator('article').filter({hasText:`Batería E2E ${marker}`})
+  await batteryCard.getByRole('button',{name:'Eliminar'}).click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Eliminar batería'}).click()
+  await expect(page.getByText(/Batería eliminada.*evaluaciones anteriores conservaron sus resultados/)).toBeVisible({timeout:20000})
+  await expect(batteryCard).toHaveCount(0)
+  await batterySection.getByRole('button',{name:`Eliminar prueba Potencia personalizada ${marker}`}).click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Eliminar prueba'}).click()
+  await expect(page.getByText('Prueba eliminada correctamente.')).toBeVisible({timeout:20000})
 })
 
 async function horizontalOverflow(page:import('@playwright/test').Page){return page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)}
