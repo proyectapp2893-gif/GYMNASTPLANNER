@@ -20,12 +20,28 @@ export default function ResetPasswordPage() {
     const prepararSesion = async () => {
       try {
         const params = new URLSearchParams(window.location.search)
+        const fragment = new URLSearchParams(window.location.hash.slice(1))
         const code = params.get('code')
+        const tokenHash = params.get('token_hash')
+        const accessToken = fragment.get('access_token')
+        const refreshToken = fragment.get('refresh_token')
+        const linkError = params.get('error_description') || fragment.get('error_description')
+
+        if (linkError) throw new Error(linkError.replaceAll('+', ' '))
 
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
           if (exchangeError) throw exchangeError
+        } else if (tokenHash) {
+          const { error: verifyError } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+          if (verifyError) throw verifyError
+        } else if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          if (sessionError) throw sessionError
         }
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) throw new Error('El enlace no contiene una sesión válida. Solicita un nuevo correo de recuperación.')
       } catch (err) {
         setError(getErrorMessage(err))
       } finally {

@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "../components/layout/Sidebar"; 
 import MobileNavigation from "../components/layout/MobileNavigation";
 import ClubSessionProvider from "../components/auth/ClubSessionProvider";
+import RecoveryLinkRedirect from "../components/auth/RecoveryLinkRedirect";
 
 export const metadata: Metadata = {
   title: "GymnastPlanner",
@@ -22,6 +23,7 @@ export default function RootLayout({
       */}
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased md:flex">
         <ClubSessionProvider>
+          <RecoveryLinkRedirect />
           <MobileNavigation />
           
           {/* 2. WRAPPER DEL SIDEBAR: 
