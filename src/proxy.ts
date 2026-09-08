@@ -4,7 +4,7 @@ import { isSuperAdminEmail } from './lib/admin'
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const esRutaPublica = pathname === '/' || pathname === '/login' || pathname === '/reset-password'
+  const esRutaPublica = pathname === '/' || pathname === '/login' || pathname === '/reset-password' || pathname === '/api/auth/recovery'
 
   let response = NextResponse.next({
     request: {

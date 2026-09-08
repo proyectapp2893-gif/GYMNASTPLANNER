@@ -34,11 +34,13 @@ export default function LoginPage() {
 
     setCargando(true);
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const response = await fetch('/api/auth/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
       });
-
-      if (resetError) throw resetError;
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || 'No se pudo solicitar la recuperación.');
 
       setMensajeExito('Si el correo existe, enviaremos un enlace para restablecer la contraseña.');
     } catch (err) {
