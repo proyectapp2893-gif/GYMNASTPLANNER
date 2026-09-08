@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ClipboardList, Filter, History, Loader2, Plus, RotateCcw, Save, Search, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CheckCircle2, ClipboardList, Filter, History, Loader2, Plus, Save, Search, Users, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useClubStore } from '../../../store/useClubStore'
 import { useAppConfirm } from '../ui/useAppConfirm'
@@ -50,6 +50,7 @@ export default function UnifiedPhysicalTestModule() {
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set())
   const [errorKeys, setErrorKeys] = useState<Set<string>>(new Set())
+  const formRef = useRef<HTMLDivElement>(null)
 
   const draftKey = activeClubId ? `gymnastplanner:physical-tests:${activeClubId}:${mode}` : ''
 
@@ -214,8 +215,10 @@ export default function UnifiedPhysicalTestModule() {
     setSavedKeys(new Set())
     setSavingKeys(new Set())
     setErrorKeys(new Set())
+    setDate(today())
     setMessage('Planilla nueva lista para registrar.')
     if (draftKey) localStorage.removeItem(draftKey)
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   const openCollectiveHistory = async () => {
@@ -265,18 +268,18 @@ export default function UnifiedPhysicalTestModule() {
       <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-center lg:justify-between">
         <div><h2 className="text-xl font-black text-slate-900">{mode === 'collective' ? 'Planilla colectiva' : 'Evaluación individual'}</h2><p className="text-sm text-slate-500">Elige “Todas las pruebas” o una batería. La selección es idéntica en ambos modos.</p></div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={clearDraft} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-emerald-700"><Plus className="h-4 w-4" />Nuevo registro</button>
           {mode === 'collective' && <button type="button" onClick={openCollectiveHistory} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50"><History className="h-4 w-4" />Historial colectivo</button>}
           <Link href="/configuracion/catalogos-individuales" className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-black text-indigo-700"><Plus className="h-4 w-4" />Crear prueba o batería</Link>
         </div>
       </div>
 
-      <div className="grid gap-3 border-b bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div ref={formRef} className="grid scroll-mt-4 gap-3 border-b bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5">
         <Field label="Pruebas / batería"><select value={testSetId} onChange={event => setTestSetId(event.target.value)}><option value="all">Todas las pruebas activas ({catalog.length})</option>{batteries.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></Field>
         <Field label="Grupo" icon={<Filter />}><select value={groupId} onChange={event => { setGroupId(event.target.value); if (mode === 'individual') { setAthleteId(''); setHistory([]); setLegacyHistory([]) } }}><option value="">Todos los grupos</option>{groups.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></Field>
         <Field label="Nivel"><select value={level} onChange={event => setLevel(event.target.value)}><option value="">Todos los niveles</option>{[...new Set(groups.map(item => item.nivel))].map(item => <option key={item}>{item}</option>)}</select></Field>
         {mode === 'collective' ? <Field label="Buscar" icon={<Search />}><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Nombre" /></Field> : <Field label="Gimnasta"><select value={athleteId} onChange={event => { setAthleteId(event.target.value); setHistory([]); setLegacyHistory([]) }}><option value="">Seleccionar</option>{visibleAthletes.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></Field>}
         <Field label="Fecha"><input type="date" value={date} onChange={event => setDate(event.target.value)} /></Field>
-        <div className="flex items-end"><button type="button" onClick={clearDraft} className="flex w-full items-center justify-center gap-2 rounded-xl border bg-white p-2.5 text-sm font-black text-slate-700"><RotateCcw className="h-4 w-4" />Nueva planilla</button></div>
       </div>
 
       {catalog.length === 0 ? <EmptyCatalog /> : mode === 'collective'

@@ -8,7 +8,7 @@ loadEnvFile('.env.local')
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || 'Gymnastplanner@gmail.com').trim()
+const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || 'lic.kevinperalta2893@outlook.com').trim()
 const password = process.env.SEED_TEST_PASSWORD || 'TestGym2026!'
 
 const clubs = [
