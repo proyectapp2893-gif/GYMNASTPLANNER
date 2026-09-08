@@ -73,8 +73,8 @@ try{
   checks++
   console.log(`Autorización individual verificada: ${checks} comprobaciones aprobadas.`)
 }finally{
-  for(const clubId of clubIds)await service.from('clubs').delete().eq('id',clubId)
   for(const userId of userIds)await service.auth.admin.deleteUser(userId)
+  for(const clubId of clubIds)await service.from('clubs').delete().eq('id',clubId)
 }
 
 async function createUser(prefix,role,clubId){const email=`${prefix}-${marker}@rls.test.gymnastplanner.local`;const {data,error}=await service.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{nombre:prefix}});if(error||!data.user)throw new Error(error?.message||'No se creó usuario de prueba');userIds.push(data.user.id);await row(service.from('perfiles').insert({id:data.user.id,email,nombre:prefix,rol:role,club_id:clubId}).select('id').single());return{id:data.user.id,email}}

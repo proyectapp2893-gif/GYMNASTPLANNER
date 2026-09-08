@@ -40,7 +40,12 @@ test.beforeAll(async()=>{
   await row(service.from('retroalimentaciones').insert({club_id:clubId,atleta_id:gymnastId,comentario_entrenador:'Comentario familiar E2E',proximo_foco:'Continuar con confianza',visible_familia:true,created_by:userId}).select('id').single())
 })
 
-test.afterAll(async()=>{if(clubId)await service.from('clubs').delete().eq('id',clubId);if(userId)await service.auth.admin.deleteUser(userId)})
+test.afterAll(async()=>{
+  // El perfil depende del usuario Auth; eliminarlo primero permite que el borrado
+  // en cascada del club limpie todos los datos E2E sin dejar clubes fantasma.
+  if(userId){const {error}=await service.auth.admin.deleteUser(userId);if(error)throw error}
+  if(clubId){const {error}=await service.from('clubs').delete().eq('id',clubId);if(error)throw error}
+})
 
 test('módulo individual es navegable y no desborda el viewport',async({page})=>{
   test.setTimeout(120000)
