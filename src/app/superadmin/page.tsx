@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { isSuperAdminEmailClient } from '../../lib/admin-client';
-import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag, UserPlus, KeyRound } from 'lucide-react';
+import { ShieldAlert, CheckCircle, XCircle, Loader2, Building2, BookOpen, AlertTriangle, LogOut, Dumbbell, Plus, Trash2, Video, UploadCloud, FileSpreadsheet, CheckSquare, Filter, CalendarDays, BellRing, Edit3, X, Eye, Search, Tag, UserPlus, KeyRound, Download } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BotonGenerarIA from '../../components/ejercicios/BotonGenerarIA';
 import type { Club, Ejercicio } from '../../lib/types';
+import { buildExerciseCsvTemplate, isExerciseCsvExampleName } from '../../lib/exercise-csv';
 
 type ClubAdmin = Club & {
   estado?: string | null
@@ -405,7 +406,7 @@ export default function SuperAdminPage() {
           separador = '\t';
         }
 
-        const headers = primeraLinea.split(separador).map(h => h.trim().toLowerCase());
+        const headers = primeraLinea.split(separador).map(h => h.trim().replace(/^\uFEFF/, '').replace(/^"|"$/g, '').toLowerCase());
         
         const idxNombre = headers.indexOf('nombre');
         const idxCategoria = headers.indexOf('categoria');
@@ -457,7 +458,7 @@ export default function SuperAdminPage() {
           if(valores.length === 0) continue;
           
           const nombreVal = valores[idxNombre]?.trim();
-          if(!nombreVal) continue; 
+          if(!nombreVal || isExerciseCsvExampleName(nombreVal)) continue;
           
           const descVal = idxDescripcion !== -1 ? valores[idxDescripcion] : null;
 
@@ -488,6 +489,19 @@ export default function SuperAdminPage() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const descargarPlantillaCSV = () => {
+    const blob = new Blob([buildExerciseCsvTemplate()], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = 'plantilla-ejercicios-gymnastplanner.csv';
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
+    mostrarAviso('Plantilla descargada. Reemplaza o elimina la fila de ejemplo antes de cargarla.');
   };
 
   // 🔥 EL CAMBIO ESTÁ AQUÍ (Pase VIP Upsert) 🔥
@@ -1089,6 +1103,13 @@ export default function SuperAdminPage() {
                 <p className="text-xs text-slate-400 mb-6 leading-relaxed">
                   Sube un archivo de Excel guardado como <strong>CSV UTF-8 (delimitado por comas)</strong> para mantener los acentos y evitar errores de lectura.
                 </p>
+                <button
+                  type="button"
+                  onClick={descargarPlantillaCSV}
+                  className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-4 py-3 text-sm font-black text-sky-300 transition-colors hover:border-sky-400 hover:bg-sky-500/20"
+                >
+                  <Download className="h-5 w-5" /> Descargar plantilla CSV
+                </button>
                 <input 
                   type="file" 
                   accept=".csv" 
