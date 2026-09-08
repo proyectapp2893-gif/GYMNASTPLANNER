@@ -14,9 +14,11 @@ export async function createSupabaseServerClient() {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {
+            // En Server Components el proxy se encarga de renovar las cookies.
+          }
         },
       },
     }
