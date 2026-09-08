@@ -62,6 +62,7 @@ export default function SuperAdminPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cargandoCSV, setCargandoCSV] = useState(false);
+  const [arrastrandoCSV, setArrastrandoCSV] = useState(false);
   
   const [previewCSV, setPreviewCSV] = useState<EjercicioCSV[]>([]);
   const [guardandoMasivo, setGuardandoMasivo] = useState(false);
@@ -380,9 +381,11 @@ export default function SuperAdminPage() {
     router.push('/login');
   };
 
-  const manejarSubidaCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const procesarArchivoCSV = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      mostrarAviso('Formato no compatible. Selecciona un archivo CSV.', 'error');
+      return;
+    }
 
     setCargandoCSV(true);
 
@@ -488,7 +491,24 @@ export default function SuperAdminPage() {
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
+    reader.onerror = () => {
+      setCargandoCSV(false);
+      mostrarAviso('No se pudo leer el archivo. Intenta seleccionarlo nuevamente.', 'error');
+    };
     reader.readAsText(file);
+  };
+
+  const manejarSubidaCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) procesarArchivoCSV(file);
+  };
+
+  const manejarArchivoArrastrado = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setArrastrandoCSV(false);
+    if (cargandoCSV) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) procesarArchivoCSV(file);
   };
 
   const descargarPlantillaCSV = () => {
@@ -1118,14 +1138,21 @@ export default function SuperAdminPage() {
                   onChange={manejarSubidaCSV}
                 />
                 <button 
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={cargandoCSV}
-                  className={`w-full py-4 border-2 border-dashed rounded-xl font-black flex flex-col justify-center items-center gap-3 transition-colors ${cargandoCSV ? 'border-slate-600 bg-slate-900 text-slate-500 cursor-not-allowed' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500'}`}
+                  onDragEnter={(e) => { e.preventDefault(); if (!cargandoCSV) setArrastrandoCSV(true); }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastrandoCSV(false); }}
+                  onDrop={manejarArchivoArrastrado}
+                  className={`w-full py-6 border-2 border-dashed rounded-xl font-black flex flex-col justify-center items-center gap-3 transition-all ${cargandoCSV ? 'border-slate-600 bg-slate-900 text-slate-500 cursor-not-allowed' : arrastrandoCSV ? 'scale-[1.02] border-emerald-300 bg-emerald-500/30 text-emerald-200 shadow-lg shadow-emerald-950/30' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500'}`}
                 >
                   {cargandoCSV ? (
                     <><Loader2 className="w-6 h-6 animate-spin" /> Procesando Archivo...</>
+                  ) : arrastrandoCSV ? (
+                    <><UploadCloud className="w-9 h-9" /> Suelta el archivo para cargarlo</>
                   ) : (
-                    <><UploadCloud className="w-8 h-8" /> Seleccionar Archivo CSV</>
+                    <><UploadCloud className="w-8 h-8" /><span>Arrastra tu CSV aquí</span><span className="text-xs font-bold text-emerald-300/70">o haz clic para seleccionarlo</span></>
                   )}
                 </button>
               </div>
