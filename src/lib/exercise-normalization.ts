@@ -3,11 +3,18 @@ export const EXERCISE_CATEGORIES = [
   'Prep. Física - General',
   'Prep. Física - Tarjeta Azul',
   'Prep. Física - Tarjeta Roja',
+  'Prep. Física - Tarjeta Amarilla',
+  'Prep. Física - Tarjeta Verde',
+  'Prep. Física - Tarjeta Naranja',
   'Flexibilidad',
   'Calentamiento',
   'Calma / Cierre',
+  'Retroalimentación y Feedback',
   'Rutina Completa',
   'Secuencia / Conexión',
+  'Progresión',
+  'Posición Básica',
+  'Habilidad',
 ] as const
 
 export const APPARATUS = [
@@ -73,14 +80,21 @@ export function normalizeCategory(value: unknown) {
   const normalized = normalize(text)
 
   if (normalized.includes('calent')) return 'Calentamiento'
+  if (normalized.includes('retroaliment') || normalized.includes('feedback')) return 'Retroalimentación y Feedback'
   if (normalized.includes('calma') || normalized.includes('cierre')) return 'Calma / Cierre'
   if (normalized.includes('flex')) return 'Flexibilidad'
   if (normalized.includes('rutina completa')) return 'Rutina Completa'
   if (normalized.includes('secuencia') || normalized.includes('conexion')) return 'Secuencia / Conexión'
   if (normalized.includes('tarjeta azul')) return 'Prep. Física - Tarjeta Azul'
   if (normalized.includes('tarjeta roja')) return 'Prep. Física - Tarjeta Roja'
-  if (normalized.includes('prep') || normalized.includes('fisica') || normalized.includes('física')) return 'Prep. Física - General'
+  if (normalized.includes('tarjeta amarilla')) return 'Prep. Física - Tarjeta Amarilla'
+  if (normalized.includes('tarjeta verde')) return 'Prep. Física - Tarjeta Verde'
+  if (normalized.includes('tarjeta naranja')) return 'Prep. Física - Tarjeta Naranja'
+  if (normalized.includes('prep') || normalized.includes('fisica') || normalized.includes('fisico')) return 'Prep. Física - General'
   if (normalized.includes('tecn')) return 'Técnico'
+  if (normalized.includes('progres')) return 'Progresión'
+  if (normalized.includes('posicion basica')) return 'Posición Básica'
+  if (normalized === 'habilidad') return 'Habilidad'
 
   return EXERCISE_CATEGORIES.includes(text as (typeof EXERCISE_CATEGORIES)[number]) ? text : 'Técnico'
 }

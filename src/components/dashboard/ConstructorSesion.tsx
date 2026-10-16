@@ -8,6 +8,7 @@ import { useClubStore } from '../../../store/useClubStore'
 import { getCompetitionProximityForDate, getSessionTimeDistribution } from '../../lib/sports-planning'
 import { getSessionDayProfile } from '../../lib/session-focus'
 import { exerciseMatchesSessionSection } from '../../lib/session-exercise-filter'
+import { canonicalExerciseCategory, normalizeExerciseFacet } from '../../lib/exercise-facets'
 import Image from 'next/image'
 
 const parsearFecha = (fechaStr: string) => {
@@ -240,12 +241,20 @@ export default function ConstructorSesion({
     const fetchEjercicios = async () => {
       const { data: clubData } = await supabase.from('clubs').select('acceso_biblioteca_elite').eq('id', clubId).single()
       const tieneAccesoElite = clubData?.acceso_biblioteca_elite || false;
-      let query = supabase.from('ejercicios').select('id, nombre, categoria, descripcion, descripcion_corta, video_url, aparato, dificultad')
-      if (tieneAccesoElite) query = query.or(`club_id.eq.${clubId},club_id.is.null`)
-      else query = query.eq('club_id', clubId)
-      const { data } = await query
-      if (data) {
-        setTodosLosEjercicios(data.map(e => ({
+      const ejercicios: EjercicioSesion[] = []
+      const pageSize = 500
+      for (let offset = 0; ; offset += pageSize) {
+        let query = supabase.from('ejercicios')
+          .select('id, nombre, categoria, descripcion, descripcion_corta, video_url, aparato, dificultad')
+          .order('id').range(offset, offset + pageSize - 1)
+        if (tieneAccesoElite) query = query.or(`club_id.eq.${clubId},club_id.is.null`)
+        else query = query.eq('club_id', clubId)
+        const { data, error } = await query
+        if (error) {
+          setNotificacion({ mostrar: true, mensaje: 'No se pudo cargar la biblioteca de ejercicios.', tipo: 'error' })
+          return
+        }
+        ejercicios.push(...(data || []).map(e => ({
           id: e.id,
           contenido: e.nombre,
           categoria: e.categoria,
@@ -255,9 +264,11 @@ export default function ConstructorSesion({
           aparato: e.aparato,
           dificultad: e.dificultad
         })))
+        if (!data || data.length < pageSize) break
       }
+      setTodosLosEjercicios(ejercicios)
     }
-    fetchEjercicios()
+    void fetchEjercicios()
   }, [clubId])
 
   // 🔥 NUEVO: Radar de Configuración del Grupo (Fogueos y Frecuencia)
@@ -408,11 +419,14 @@ export default function ConstructorSesion({
     
     if (filtroActivo !== 'Todos') {
       const filtroNormalizado = normalizarTexto(filtroActivo);
-      disponibles = disponibles.filter(e => 
-        normalizarTexto(e.categoria).includes(filtroNormalizado) || 
-        (filtroNormalizado === 'prep-fisica' && normalizarTexto(e.categoria).includes('prep')) ||
-        (filtroNormalizado === 'rutinas' && (normalizarTexto(e.categoria).includes('rutina') || normalizarTexto(e.categoria).includes('secuencia')))
-      )
+      disponibles = disponibles.filter(e => {
+        const categoria = normalizarTexto(canonicalExerciseCategory(e.categoria))
+        return categoria.includes(filtroNormalizado) ||
+          (filtroNormalizado.includes('prep') && categoria.includes('prep')) ||
+          (filtroNormalizado === 'rutinas' && (categoria.includes('rutina') || categoria.includes('secuencia'))) ||
+          (filtroNormalizado === 'cierre' && (categoria.includes('calma') || categoria.includes('retroaliment'))) ||
+          (filtroNormalizado === 'tecnico' && ['progresion', 'posicion basica', 'habilidad'].includes(normalizeExerciseFacet(categoria)))
+      })
     }
 
     if (filtroAparato !== 'Todos los Aparatos') {

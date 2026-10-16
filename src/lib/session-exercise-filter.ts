@@ -1,3 +1,5 @@
+import { canonicalExerciseCategory, normalizeExerciseFacet } from './exercise-facets'
+
 export interface FilterableSessionExercise {
   categoria?: string | null
   descripcion?: string | null
@@ -20,20 +22,20 @@ export function exerciseMatchesSessionSection(
   sectionName: string,
   selectedLevel: string,
 ) {
-  const category = normalize(exercise.categoria)
+  const category = normalize(canonicalExerciseCategory(exercise.categoria))
   const apparatus = normalize(exercise.aparato)
   const searchable = normalize(`${exercise.contenido} ${exercise.descripcion || ''} ${exercise.descripcion_corta || ''}`)
 
   if (sectionId.startsWith('calentamiento_')) return category.includes('calentamiento')
   if (sectionId.startsWith('prep_fisica_')) {
-    if (!category.includes('prep') && !category.includes('fisica')) return false
+    if (!category.includes('prep') && !category.includes('fisica') && !category.includes('fisico')) return false
     if (sectionId === 'prep_fisica_core') return includesAny(searchable, ['core', 'abdom', 'lumbar', 'canoa', 'hollow', 'tronco', 'estabiliza', 'zona media'])
     if (sectionId === 'prep_fisica_superior') return includesAny(searchable, ['brazo', 'hombro', 'escap', 'pectoral', 'dorsal', 'dominada', 'flexion', 'push', 'empuje', 'traccion', 'handstand', 'parada de manos', 'tren superior'])
     if (sectionId === 'prep_fisica_inferior') return includesAny(searchable, ['pierna', 'glute', 'cadera', 'rodilla', 'tobillo', 'pantorr', 'gemelo', 'sentadilla', 'zancada', 'salto', 'pliometr', 'tren inferior'])
     return true
   }
   if (sectionId.startsWith('tecnico_')) {
-    return category.includes('tecn')
+    return (category.includes('tecn') || ['progresion', 'posicion basica', 'habilidad'].includes(normalizeExerciseFacet(category)))
       && apparatusMatchesSection(apparatus, sectionName)
       && difficultyMatchesLevel(exercise.dificultad, selectedLevel, searchable)
   }
@@ -46,7 +48,7 @@ export function exerciseMatchesSessionSection(
     return true
   }
   if (sectionId === 'cierre_elongacion') return (category.includes('calma') || category.includes('cierre')) && !includesAny(searchable, ['feedback', 'retroaliment'])
-  if (sectionId === 'cierre_retroalimentacion') return (category.includes('calma') || category.includes('cierre')) && includesAny(searchable, ['feedback', 'retroaliment', 'reflexion'])
+  if (sectionId === 'cierre_retroalimentacion') return category.includes('retroaliment') || ((category.includes('calma') || category.includes('cierre')) && includesAny(searchable, ['feedback', 'retroaliment', 'reflexion']))
   return false
 }
 
@@ -75,7 +77,7 @@ function difficultyMatchesLevel(difficultyValue?: string | null, levelValue?: st
   const exactDifficulty = difficulty.match(/^nivel\s*(\d{1,2})$/)
   if (exactDifficulty) return Number(exactDifficulty[1]) === level
 
-  if (level <= 3) return difficulty.includes('1-3') || difficulty.includes('1 a 3') || difficulty.includes('basic')
+  if (level <= 3) return difficulty.includes('1-3') || difficulty.includes('1 a 3') || difficulty.includes('basic') || difficulty.includes('principiante')
   if (level <= 6) return difficulty.includes('4-6') || difficulty.includes('4 a 6') || difficulty.includes('intermedio')
   if (level <= 9) return difficulty.includes('7-9') || difficulty.includes('7 a 9') || difficulty.includes('avanzado')
   return difficulty.includes('nivel 10') || difficulty.includes('elite')

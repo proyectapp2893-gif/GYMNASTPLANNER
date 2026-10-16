@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import BotonGenerarIA from '../../components/ejercicios/BotonGenerarIA';
 import type { Club, Ejercicio } from '../../lib/types';
 import { buildExerciseCsvTemplate, isExerciseCsvExampleName } from '../../lib/exercise-csv';
+import { canonicalExerciseApparatus, canonicalExerciseCategory, canonicalExerciseDifficulty } from '../../lib/exercise-facets';
 
 type ClubAdmin = Club & {
   estado?: string | null
@@ -104,8 +105,18 @@ export default function SuperAdminPage() {
       mostrarAviso(getErrorMessage(error), 'error');
     }
 
-    const { data: ejData } = await supabase.from('ejercicios').select('*').is('club_id', null).order('created_at', { ascending: false });
-    if (ejData) setEjerciciosGlobales(ejData as EjercicioGlobal[]);
+    const ejercicios: EjercicioGlobal[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase.from('ejercicios').select('*').is('club_id', null).order('id').range(offset, offset + pageSize - 1);
+      if (error) {
+        mostrarAviso('No se pudo cargar la biblioteca global completa.', 'error');
+        break;
+      }
+      ejercicios.push(...(data || []) as EjercicioGlobal[]);
+      if (!data || data.length < pageSize) break;
+    }
+    setEjerciciosGlobales(ejercicios);
 
     setCargando(false);
   }, [mostrarAviso]);
@@ -330,7 +341,7 @@ export default function SuperAdminPage() {
     
     const { error } = await supabase.from('ejercicios').insert([{
       nombre: nuevoEjNombre,
-      categoria: nuevoEjCategoria,
+      categoria: canonicalExerciseCategory(nuevoEjCategoria),
       descripcion: nuevoEjDesc,
       video_url: nuevoEjVideo,
       etiquetas: nuevoEjEtiquetas 
@@ -356,9 +367,9 @@ export default function SuperAdminPage() {
     
     const { error } = await supabase.from('ejercicios').update({
       nombre: ejercicioEditando.nombre,
-      categoria: ejercicioEditando.categoria,
-      aparato: ejercicioEditando.aparato,
-      dificultad: ejercicioEditando.dificultad,
+      categoria: canonicalExerciseCategory(ejercicioEditando.categoria),
+      aparato: canonicalExerciseApparatus(ejercicioEditando.aparato),
+      dificultad: canonicalExerciseDifficulty(ejercicioEditando.dificultad),
       descripcion: ejercicioEditando.descripcion,
       descripcion_corta: ejercicioEditando.descripcion_corta,
       video_url: ejercicioEditando.video_url,
@@ -467,9 +478,9 @@ export default function SuperAdminPage() {
 
           ejerciciosParseados.push({
             nombre: nombreVal,
-            categoria: idxCategoria !== -1 ? valores[idxCategoria] || 'General' : 'General',
-            aparato: idxAparato !== -1 ? valores[idxAparato] || null : null,
-            dificultad: idxDificultad !== -1 ? valores[idxDificultad] || null : null,
+            categoria: canonicalExerciseCategory(idxCategoria !== -1 ? valores[idxCategoria] || 'General' : 'General'),
+            aparato: canonicalExerciseApparatus(idxAparato !== -1 ? valores[idxAparato] : null) || null,
+            dificultad: canonicalExerciseDifficulty(idxDificultad !== -1 ? valores[idxDificultad] : null) || null,
             descripcion: descVal || null,
             descripcion_corta: descVal || null,
             video_url: idxVideo !== -1 ? valores[idxVideo] || null : null,
@@ -544,14 +555,14 @@ export default function SuperAdminPage() {
     }
   };
 
-  const aparatosUnicos = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.aparato).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
-  const dificultadesUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.dificultad).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
-  const categoriasUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => ej.categoria).filter((value): value is string => Boolean(value)))), [ejerciciosGlobales]);
+  const aparatosUnicos = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => canonicalExerciseApparatus(ej.aparato)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [ejerciciosGlobales]);
+  const dificultadesUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => canonicalExerciseDifficulty(ej.dificultad)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [ejerciciosGlobales]);
+  const categoriasUnicas = useMemo(() => Array.from(new Set(ejerciciosGlobales.map(ej => canonicalExerciseCategory(ej.categoria)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')), [ejerciciosGlobales]);
 
   const ejerciciosFiltrados = useMemo(() => ejerciciosGlobales.filter(ej => {
-    const cumpleCategoria = filtroCategoria === 'Todos' || ej.categoria === filtroCategoria;
-    const cumpleAparato = filtroAparato === 'Todos' || ej.aparato === filtroAparato;
-    const cumpleDificultad = filtroDificultad === 'Todos' || ej.dificultad === filtroDificultad;
+    const cumpleCategoria = filtroCategoria === 'Todos' || canonicalExerciseCategory(ej.categoria) === filtroCategoria;
+    const cumpleAparato = filtroAparato === 'Todos' || canonicalExerciseApparatus(ej.aparato) === filtroAparato;
+    const cumpleDificultad = filtroDificultad === 'Todos' || canonicalExerciseDifficulty(ej.dificultad) === filtroDificultad;
     
     let cumpleFecha = true;
     if (filtroFechaExacta) {
@@ -738,8 +749,12 @@ export default function SuperAdminPage() {
                       <option value="Flexibilidad">Flexibilidad</option>
                       <option value="Calentamiento">Calentamiento</option>
                       <option value="Calma / Cierre">Calma / Cierre</option>
+                      <option value="Retroalimentación y Feedback">Retroalimentación y Feedback</option>
                       <option value="Rutina Completa">Rutina Completa</option>
                       <option value="Secuencia / Conexión">Secuencia / Conexión</option>
+                      <option value="Progresión">Progresión</option>
+                      <option value="Posición Básica">Posición Básica</option>
+                      <option value="Habilidad">Habilidad</option>
                     </select>
                   </div>
                   <div>
@@ -1093,8 +1108,12 @@ export default function SuperAdminPage() {
                       <option value="Flexibilidad">Flexibilidad</option>
                       <option value="Calentamiento">Calentamiento</option>
                       <option value="Calma / Cierre">Calma / Cierre</option>
+                      <option value="Retroalimentación y Feedback">Retroalimentación y Feedback</option>
                       <option value="Rutina Completa">Rutina Completa</option>
                       <option value="Secuencia / Conexión">Secuencia / Conexión</option>
+                      <option value="Progresión">Progresión</option>
+                      <option value="Posición Básica">Posición Básica</option>
+                      <option value="Habilidad">Habilidad</option>
                     </select>
                   </div>
                   <div>

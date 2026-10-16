@@ -5,7 +5,7 @@ import { PlayCircle, X, Save, Loader2, Link as LinkIcon } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useClubStore } from '../../../store/useClubStore'
-import { normalizeExerciseInput, normalizeVideoUrl } from '../../lib/exercise-normalization'
+import { EXERCISE_CATEGORIES, normalizeExerciseInput, normalizeVideoUrl } from '../../lib/exercise-normalization'
 import type { Ejercicio } from '../../lib/types'
 
 export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }) {
@@ -245,7 +245,7 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
                     onChange={(e) => setFormData({...formData, categoria: e.target.value})}
                     className="w-full mt-1 p-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 bg-white focus:ring-2 focus:ring-rose-500 outline-none cursor-pointer"
                   >
-                    {formData.categoria && !["Técnico", "Prep. Física - General", "Prep. Física - Tarjeta Roja", "Prep. Física - Tarjeta Azul", "Prep. Física - Tarjeta Amarilla", "Prep. Física - Tarjeta Verde", "Prep. Física - Tarjeta Naranja", "Flexibilidad", "Calentamiento", "Calma / Cierre"].includes(formData.categoria) && (
+                    {formData.categoria && !EXERCISE_CATEGORIES.some(category => category === formData.categoria) && (
                       <option value={formData.categoria}>{formData.categoria}</option>
                     )}
                     <option value="Técnico">Técnico</option>
@@ -258,6 +258,12 @@ export default function TarjetaEjercicio({ ejercicio }: { ejercicio: Ejercicio }
                     <option value="Flexibilidad">Flexibilidad</option>
                     <option value="Calentamiento">Calentamiento</option>
                     <option value="Calma / Cierre">Calma / Cierre</option>
+                    <option value="Retroalimentación y Feedback">Retroalimentación y Feedback</option>
+                    <option value="Rutina Completa">Rutina Completa</option>
+                    <option value="Secuencia / Conexión">Secuencia / Conexión</option>
+                    <option value="Progresión">Progresión</option>
+                    <option value="Posición Básica">Posición Básica</option>
+                    <option value="Habilidad">Habilidad</option>
                   </select>
                 </div>
 

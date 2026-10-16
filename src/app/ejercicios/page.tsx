@@ -40,18 +40,21 @@ export default function Ejercicios() {
 
     const tieneAccesoElite = clubData?.acceso_biblioteca_elite || false;
 
-    let query = supabase.from('ejercicios').select('*').order('created_at', { ascending: false })
-
-    if (tieneAccesoElite) {
-      query = query.or(`club_id.eq.${clubId},club_id.is.null`)
-    } else {
-      query = query.eq('club_id', clubId)
+    const ejerciciosCargados: Ejercicio[] = []
+    const pageSize = 500
+    for (let offset = 0; ; offset += pageSize) {
+      let query = supabase.from('ejercicios').select('*').order('id').range(offset, offset + pageSize - 1)
+      if (tieneAccesoElite) query = query.or(`club_id.eq.${clubId},club_id.is.null`)
+      else query = query.eq('club_id', clubId)
+      const { data, error } = await query
+      if (error) {
+        console.error('Error cargando ejercicios:', error)
+        break
+      }
+      ejerciciosCargados.push(...(data || []) as Ejercicio[])
+      if (!data || data.length < pageSize) break
     }
-
-    const { data, error } = await query
-
-    if (error) console.error('Error cargando ejercicios:', error)
-    setEjercicios((data || []) as Ejercicio[])
+    setEjercicios(ejerciciosCargados.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')))
     setCargando(false)
   }, [clubId])
 
@@ -195,6 +198,12 @@ export default function Ejercicios() {
                     <option value="Flexibilidad">Flexibilidad</option>
                     <option value="Calentamiento">Calentamiento</option>
                     <option value="Calma / Cierre">Calma / Cierre</option>
+                    <option value="Retroalimentación y Feedback">Retroalimentación y Feedback</option>
+                    <option value="Rutina Completa">Rutina Completa</option>
+                    <option value="Secuencia / Conexión">Secuencia / Conexión</option>
+                    <option value="Progresión">Progresión</option>
+                    <option value="Posición Básica">Posición Básica</option>
+                    <option value="Habilidad">Habilidad</option>
                   </select>
                 </div>
 

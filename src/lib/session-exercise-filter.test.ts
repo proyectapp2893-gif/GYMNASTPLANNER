@@ -31,4 +31,17 @@ describe('exerciseMatchesSessionSection', () => {
     expect(exerciseMatchesSessionSection(levelOne, 'tecnico_aparato1', 'Suelo', 'Nivel 3')).toBe(false)
     expect(exerciseMatchesSessionSection(levelThree, 'tecnico_aparato1', 'Suelo', 'Nivel 3')).toBe(true)
   })
+
+  it('shows feedback imported under its own category in the feedback block', () => {
+    const feedback = exercise({ categoria: 'Retroalimentación y Feedback', contenido: 'Dos estrellas y un deseo', aparato: 'General' })
+    expect(exerciseMatchesSessionSection(feedback, 'cierre_retroalimentacion', 'Retroalimentación (Feedback)', 'Nivel 1')).toBe(true)
+    expect(exerciseMatchesSessionSection(feedback, 'cierre_elongacion', 'Elongación de Relajación', 'Nivel 1')).toBe(false)
+  })
+
+  it('accepts closure, physical and technical aliases from imported exercises', () => {
+    expect(exerciseMatchesSessionSection(exercise({ categoria: 'Calma y cierre', contenido: 'Respiración y reflexión' }), 'cierre_retroalimentacion', 'Retroalimentación', 'Nivel 1')).toBe(true)
+    expect(exerciseMatchesSessionSection(exercise({ categoria: 'Calma / Cierre', contenido: 'Elongación suave' }), 'cierre_elongacion', 'Elongación', 'Nivel 1')).toBe(true)
+    expect(exerciseMatchesSessionSection(exercise({ categoria: 'Físico', contenido: 'Estabilización de core' }), 'prep_fisica_core', 'Zona Media', 'Nivel 1')).toBe(true)
+    expect(exerciseMatchesSessionSection(exercise({ categoria: 'Habilidad', contenido: 'Parada de manos', dificultad: 'Principiante' }), 'tecnico_aparato1', 'Suelo', 'Nivel 1')).toBe(true)
+  })
 })
