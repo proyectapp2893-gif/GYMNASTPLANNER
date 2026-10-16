@@ -38,6 +38,7 @@ const aiRequestSchema = z.object({
   competenciasSecundarias: z.array(z.object({ nombre: z.string().optional(), fecha: z.string().optional() })).default([]),
   diasEntrenamiento: z.coerce.number().int().min(1).max(7).default(6),
   fechaSesionActual: z.string().nullable().optional(),
+  cargaDia: z.object({ volumen: z.number().min(0).max(100), intensidad: z.number().min(0).max(100) }).optional(),
 })
 
 export async function POST(request: Request) {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual } = parsed.data
+    const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual, cargaDia } = parsed.data
     const conocimientoAprobado = await getApprovedSportsKnowledgeContext(['seguridad','carga','tecnica','recuperacion','bienestar','competencia'])
     const proximidadCompetencia = getCompetitionProximityForDate(
       fechaSesionActual,
@@ -65,19 +66,22 @@ export async function POST(request: Request) {
       .eq('id', clubId)
       .single()
 
-    let ejerciciosQuery = supabase
-      .from('ejercicios')
-      .select('id, nombre, categoria, aparato, dificultad, descripcion_corta')
-
-    if (clubData?.acceso_biblioteca_elite) {
-      ejerciciosQuery = ejerciciosQuery.or(`club_id.eq.${clubId},club_id.is.null`)
-    } else {
-      ejerciciosQuery = ejerciciosQuery.eq('club_id', clubId)
+    const catalogoCompleto: CatalogExercise[] = []
+    const pageSize = 500
+    for (let offset = 0; ; offset += pageSize) {
+      let query = supabase.from('ejercicios')
+        .select('id, nombre, categoria, aparato, dificultad, descripcion_corta')
+        .order('id').range(offset, offset + pageSize - 1)
+      query = clubData?.acceso_biblioteca_elite
+        ? query.or(`club_id.eq.${clubId},club_id.is.null`)
+        : query.eq('club_id', clubId)
+      const { data, error } = await query
+      if (error) throw error
+      catalogoCompleto.push(...((data || []) as CatalogExercise[]))
+      if (!data || data.length < pageSize) break
     }
-
-    const { data: ejercicios } = await ejerciciosQuery
-    const catalogoCompleto = (ejercicios || []) as CatalogExercise[]
-    const catalogoPrompt = limitCatalogForPrompt(catalogoCompleto, enfoqueDia || objetivo, 80)
+    const recentUsage = new Map<string, number>()
+    const recentSessions: Array<{ fecha: string; objetivo: string; volumen: number | null; intensidad: number | null; exerciseCount: number }> = []
 
     let contextoTestFisicos = "No hay evaluaciones físicas previas."
     // 🔥 NUEVO: Variable base para el inventario
@@ -93,6 +97,29 @@ export async function POST(request: Request) {
 
       if (!grupoAutorizado) {
         return NextResponse.json({ error: 'Grupo no autorizado para este club' }, { status: 403 })
+      }
+
+      if (fechaSesionActual && /^\d{4}-\d{2}-\d{2}$/.test(fechaSesionActual)) {
+        const { data: history, error: historyError } = await supabase.from('sesiones')
+          .select('fecha_calendario,objetivo,volumen_planificado,intensidad_planificada,ejercicios')
+          .eq('club_id', clubId).eq('grupo_id', grupoId).is('atleta_id', null).is('deleted_at', null)
+          .lt('fecha_calendario', fechaSesionActual)
+          .order('fecha_calendario', { ascending: false }).limit(8)
+        if (historyError) console.error('No se pudo consultar el historial de sesiones:', historyError)
+        for (const session of history || []) {
+          const blocks = session.ejercicios && typeof session.ejercicios === 'object' ? Object.values(session.ejercicios) : []
+          let exerciseCount = 0
+          for (const block of blocks) {
+            if (!Array.isArray(block)) continue
+            for (const exercise of block) {
+              if (!exercise || typeof exercise !== 'object' || typeof exercise.id !== 'string') continue
+              exerciseCount += 1
+              recentUsage.set(exercise.id, (recentUsage.get(exercise.id) || 0) + 1)
+            }
+          }
+          recentSessions.push({ fecha: session.fecha_calendario, objetivo: session.objetivo,
+            volumen: session.volumen_planificado, intensidad: session.intensidad_planificada, exerciseCount })
+        }
       }
 
       // --- Lógica original de Test Físicos intacta ---
@@ -119,8 +146,11 @@ export async function POST(request: Request) {
       contextoInventario = buildInventoryContext(inventarioCombinado)
     }
 
+    const catalogoOrdenado = [...catalogoCompleto].sort((a, b) => (recentUsage.get(a.id) || 0) - (recentUsage.get(b.id) || 0))
+    const catalogoPrompt = limitCatalogForPrompt(catalogoOrdenado, enfoqueDia || objetivo, 80)
+
     if (!apiKey) {
-      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo, enfoqueDia, tipoSesion))
+      return NextResponse.json(buildFallbackSession(catalogoOrdenado, objetivo, enfoqueDia, tipoSesion, cargaDia))
     }
 
     // 🔥 MODO FRANCOTIRADOR
@@ -176,6 +206,10 @@ export async function POST(request: Request) {
       - Nivel: ${nivel} | Fase: ${objetivo} | Semana: ${semana || 'Sin especificar'} | Horario: ${horario} | Enfoque: ${enfoqueDia}
       - Tipo pedagógico: ${tipoSesion || 'mixto'} | Aparatos técnicos explícitos: ${aparatosDia || 'ninguno'}
       - Frecuencia semanal: ${diasEntrenamiento} dias
+      ${cargaDia ? `- Objetivo relativo para este día: volumen ${cargaDia.volumen}/100 e intensidad ${cargaDia.intensidad}/100. Ajusta la dosificación al microciclo y al estado del grupo; son objetivos de planificación, no carga realizada.` : ''}
+      - Sesiones anteriores guardadas, de reciente a antigua: ${JSON.stringify(recentSessions)}
+      - IDs de ejercicios usados recientemente y número de apariciones: ${JSON.stringify(Object.fromEntries(recentUsage))}
+      - Continúa la progresión del grupo y alterna estímulos y recuperación. Evita repetir ejercicios recientes cuando haya alternativas adecuadas para el mismo objetivo; conserva los básicos necesarios.
       ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: estamos en descarga/taper. Reduce preparacion fisica pesada y prioriza rutinas, tecnica limpia, recuperacion y confianza.` : ''}
       ${contextoInventario}
       ${contextoTestFisicos}
@@ -211,7 +245,7 @@ export async function POST(request: Request) {
       return NextResponse.json(sanitized)
     } catch (error) {
       console.error('Fallback sesion IA:', error)
-      return NextResponse.json(buildFallbackSession(catalogoCompleto, objetivo, enfoqueDia, tipoSesion))
+      return NextResponse.json(buildFallbackSession(catalogoOrdenado, objetivo, enfoqueDia, tipoSesion, cargaDia))
     }
 
   } catch (error) {

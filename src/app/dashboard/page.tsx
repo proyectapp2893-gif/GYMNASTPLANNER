@@ -6,14 +6,18 @@ import { useClubStore } from '../../../store/useClubStore'
 import PlanAnualGrid from '../../components/dashboard/PlanAnualGrid' 
 import HorarioSemanal from '../../components/dashboard/HorarioSemanal' 
 import ConstructorSesion from '../../components/dashboard/ConstructorSesion' 
+import DistribucionSemanal from '../../components/dashboard/DistribucionSemanal'
+import MacrocycleShareLinks from '../../components/dashboard/MacrocycleShareLinks'
 import GraficosCarga from '../../components/dashboard/GraficosCarga' 
+import MonthlyReportExport from '../../components/dashboard/MonthlyReportExport'
 import { ArrowLeft, CalendarDays, ChevronRight, Clock3, LayoutDashboard, Layers3, Loader2, Settings, Trophy, Users } from 'lucide-react'
 import { calculateCurrentWeek, getWeekPlan, type PlanningConfig } from '../../lib/sports-planning'
+import { getWeeklyLoadDays, type TrainingDay } from '../../lib/weekly-load-planning'
 import type { Grupo } from '../../lib/types'
 import Link from 'next/link'
 
 type GrupoActivo = Grupo & { nivel: string }
-type DiaHorario = { dia: string; [key: string]: unknown }
+type DiaHorario = TrainingDay & { lugar?: string | null }
 type ConfiguracionPlanificacion = PlanningConfig & {
   grupo_id?: string
   horario_semanal?: DiaHorario[] | null
@@ -55,6 +59,7 @@ export default function DashboardPlanificacion() {
   const [fechaExactaDia, setFechaExactaDia] = useState('')
   const [horaDia, setHoraDia] = useState('')
   const [aparatosDia, setAparatosDia] = useState('')
+  const [weeklyRefresh, setWeeklyRefresh] = useState(0)
 
   useEffect(() => {
     const cargarGrupos = async () => {
@@ -130,6 +135,7 @@ export default function DashboardPlanificacion() {
         </div>:<span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700"><Users className="h-4 w-4"/>{grupos.length} grupos</span>}
       </div>
 
+      {!cargandoConfig && <MacrocycleShareLinks />}
       {cargandoConfig ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
       ) : !grupoSeleccionado ? (
@@ -138,6 +144,7 @@ export default function DashboardPlanificacion() {
         <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl mb-6 shadow-sm"><h3 className="font-bold text-amber-800">Macrociclo pendiente de configuración</h3><p className="text-sm text-amber-700">Asigna las fechas y el horario de este grupo para comenzar.</p><div className="mt-4 flex flex-wrap gap-2"><Link href={`/configuracion?seccion=planificacion&grupo=${grupoSeleccionado.id}`} className="inline-flex items-center gap-2 rounded-lg bg-amber-700 px-4 py-2 text-sm font-bold text-white"><Settings className="h-4 w-4"/>Configurar este grupo</Link><button type="button" onClick={volverAGrupos} className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800"><ArrowLeft className="h-4 w-4"/>Volver a los grupos</button></div></div>
       ) : configuracion && grupoSeleccionado ? (
         <>
+          <MonthlyReportExport key={grupoSeleccionado.id} grupoId={grupoSeleccionado.id} />
           <PlanAnualGrid 
             configuracion={configuracion}
             semanaSeleccionada={semanaNum} 
@@ -162,8 +169,17 @@ export default function DashboardPlanificacion() {
             horarioPersonalizado={configuracion.horario_semanal}
             onSeleccionarDia={seleccionarDia}
           />
+          <DistribucionSemanal
+            grupoId={grupoSeleccionado.id}
+            configuracion={configuracion}
+            semanaNum={semanaNum}
+            horario={configuracion.horario_semanal || []}
+            diaActivo={diaSeleccionado}
+            refreshKey={weeklyRefresh}
+            onSeleccionarDia={seleccionarDia}
+          />
           
-          <ConstructorSesion
+          <div id="constructor-sesion"><ConstructorSesion
             grupoId={grupoSeleccionado.id}
             nivelSeleccionado={grupoSeleccionado.nivel}
             semanaActual={semanaActual}
@@ -173,7 +189,9 @@ export default function DashboardPlanificacion() {
             fechaExactaDia={fechaExactaDia}
             horaDia={horaDia} 
             aparatosDia={aparatosDia}
-          />
+            cargaDia={getWeeklyLoadDays(configuracion, semanaNum, configuracion.horario_semanal || []).find(day => day.dia === diaSeleccionado) || null}
+            onSessionSaved={() => setWeeklyRefresh(value => value + 1)}
+          /></div>
         </>
       ) : (
         <div className="text-center py-32 text-slate-400 font-bold bg-white rounded-3xl border-2 border-dashed border-slate-200">

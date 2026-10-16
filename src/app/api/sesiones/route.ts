@@ -16,6 +16,9 @@ const saveSessionSchema = z.object({
   objetivo: z.string().min(1).max(220),
   fechaCalendario: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   ejercicios: z.record(z.string(), z.unknown()),
+  duracionPrevistaMin: z.number().int().min(0).max(1440).optional(),
+  volumenPlanificado: z.number().min(0).max(100).optional(),
+  intensidadPlanificada: z.number().min(0).max(100).optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -47,6 +50,8 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('club_id', clubId)
       .eq('grupo_id', grupoId)
+      .is('atleta_id', null)
+      .is('deleted_at', null)
 
     query = fechaCalendario ? query.eq('fecha_calendario', fechaCalendario) : query.eq('objetivo', objetivo)
     const { data: session, error } = await query.maybeSingle()
@@ -60,6 +65,8 @@ export async function GET(request: NextRequest) {
       .eq('club_id', clubId)
       .eq('nivel', nivel)
       .is('grupo_id', null)
+      .is('atleta_id', null)
+      .is('deleted_at', null)
 
     legacyQuery = fechaCalendario ? legacyQuery.eq('fecha_calendario', fechaCalendario) : legacyQuery.eq('objetivo', objetivo)
     const { data: legacySession, error: legacyError } = await legacyQuery.maybeSingle()
@@ -84,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { id, grupoId, nivel, objetivo, fechaCalendario, ejercicios } = parsed.data
+    const { id, grupoId, nivel, objetivo, fechaCalendario, ejercicios, duracionPrevistaMin, volumenPlanificado, intensidadPlanificada } = parsed.data
     const authorized = await ensureGroupBelongsToClub(supabase, grupoId, clubId)
     if (!authorized) {
       return NextResponse.json({ error: 'Grupo no autorizado para este club' }, { status: 403 })
@@ -97,6 +104,9 @@ export async function POST(request: NextRequest) {
       objetivo,
       fecha_calendario: fechaCalendario || null,
       ejercicios,
+      ...(duracionPrevistaMin === undefined ? {} : { duracion_prevista_min: duracionPrevistaMin }),
+      ...(volumenPlanificado === undefined ? {} : { volumen_planificado: volumenPlanificado }),
+      ...(intensidadPlanificada === undefined ? {} : { intensidad_planificada: intensidadPlanificada }),
     }
 
     const result = id
@@ -105,6 +115,8 @@ export async function POST(request: NextRequest) {
         .update(payload)
         .eq('id', id)
         .eq('club_id', clubId)
+        .is('atleta_id', null)
+        .is('deleted_at', null)
         .or(`grupo_id.eq.${grupoId},grupo_id.is.null`)
         .select()
         .single()

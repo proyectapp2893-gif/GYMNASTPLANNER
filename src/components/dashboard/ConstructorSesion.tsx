@@ -66,6 +66,8 @@ interface ConstructorSesionProps {
   fechaExactaDia?: string
   horaDia?: string
   aparatosDia?: string
+  cargaDia?: { fecha: string; volumen: number; intensidad: number } | null
+  onSessionSaved?: () => void
 }
 
 interface CompetenciaPlanificada {
@@ -123,7 +125,9 @@ export default function ConstructorSesion({
   enfoqueDia = 'Entrenamiento General',
   fechaExactaDia = '',
   horaDia = '',
-  aparatosDia = ''
+  aparatosDia = '',
+  cargaDia = null,
+  onSessionSaved,
 }: ConstructorSesionProps) {
   
   const { clubId, nombreClub: nombreClubGlobal, logoUrl } = useClubStore()
@@ -488,7 +492,8 @@ export default function ConstructorSesion({
             ...competenciasSecundarias,
           ],
           diasEntrenamiento,
-          fechaSesionActual: parsearFecha(fechaExactaDia)
+          fechaSesionActual: parsearFecha(fechaExactaDia),
+          cargaDia: cargaDia?.fecha === parsearFecha(fechaExactaDia) ? { volumen: cargaDia.volumen, intensidad: cargaDia.intensidad } : undefined,
         })
       })
       const dosisGenerada = await response.json() as DosificacionPorGrupo & { error?: string }
@@ -639,11 +644,15 @@ export default function ConstructorSesion({
           objetivo: `${objetivoFase} - ${fechaExactaDia}`,
           ejercicios: datosSesion,
           fechaCalendario: parsearFecha(fechaExactaDia),
+          duracionPrevistaMin: Object.values(tiemposCalculados).reduce((sum, value) => sum + Number(value || 0), 0),
+          volumenPlanificado: cargaDia?.fecha === parsearFecha(fechaExactaDia) ? cargaDia.volumen : undefined,
+          intensidadPlanificada: cargaDia?.fecha === parsearFecha(fechaExactaDia) ? cargaDia.intensidad : undefined,
         }),
       })
       const result = await response.json() as { session?: { id: string } | null; error?: string }
       if (!response.ok) throw new Error(result.error || 'No se pudo guardar la sesión')
       if (result.session) setSesionId(result.session.id)
+      onSessionSaved?.()
       mostrarNotificacion('¡Sesión guardada exitosamente! 🏆', 'exito'); setHaySesionParaGuardar(false)
     } catch { mostrarNotificacion('Error al guardar sesión', 'error');
     } finally { setGuardando(false) }

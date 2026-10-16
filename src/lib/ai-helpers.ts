@@ -98,13 +98,14 @@ export function sanitizeSessionResponse(raw: unknown, catalog: CatalogExercise[]
   return sanitized
 }
 
-export function buildFallbackSession(catalog: CatalogExercise[], objetivo = '', enfoque = '', tipoSesion = '') {
+export function buildFallbackSession(catalog: CatalogExercise[], objetivo = '', enfoque = '', tipoSesion = '', carga?: { volumen: number; intensidad: number }) {
   const fase = normalize(objetivo)
   const focus = normalize(enfoque)
   const isDance = tipoSesion === 'dance_choreography' || ['coreografia', 'ballet', 'danza'].some(term => focus.includes(term))
   const competitive = fase.includes('compet') || fase.includes('pulimiento')
   const pick = (matcher: (exercise: CatalogExercise) => boolean, max: number) =>
-    catalog.filter(matcher).slice(0, max).map(exercise => ({ id: exercise.id, dosificacion: fallbackDose(fase) }))
+    catalog.filter(matcher).slice(0, carga && carga.volumen <= 45 ? Math.max(1, Math.ceil(max * 0.6)) : max)
+      .map(exercise => ({ id: exercise.id, dosificacion: fallbackDose(fase, carga) }))
 
   const byCategory = (category: string) => (exercise: CatalogExercise) => normalize(exercise.categoria || '').includes(category)
   const technical = (exercise: CatalogExercise) => normalize(exercise.categoria || '').includes('tecn')
@@ -262,12 +263,20 @@ function sanitizeCompetitiveDoseText(value: string, fallback: string) {
   return unsafe.some(term => normalized.includes(term)) ? fallback : value
 }
 
-function fallbackDose(fase: string): Dose {
+function fallbackDose(fase: string, carga?: { volumen: number; intensidad: number }): Dose {
   if (fase.includes('compet') || fase.includes('pulimiento')) {
     return {
       avanzado: '2-3 series tecnicas, intensidad baja-media',
       base: '2 series tecnicas, intensidad baja',
       desarrollo: '1-2 series con asistencia y descanso amplio',
+    }
+  }
+
+  if (carga && carga.volumen <= 45) {
+    return {
+      avanzado: '2-3 series de calidad técnica, recuperación amplia',
+      base: '2 series controladas, recuperación amplia',
+      desarrollo: '1-2 series asistidas, sin fatiga',
     }
   }
 

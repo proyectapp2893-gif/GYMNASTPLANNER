@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useEffect, useMemo, useCallback } from 'react'
 import { Calendar, Clock, MapPin, Activity } from 'lucide-react'
 import { getSessionDayProfile } from '../../lib/session-focus'
 
@@ -25,8 +25,7 @@ interface HorarioSemanalProps {
 }
 
 export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActivo, diaInicial, fechaInicio, horarioPersonalizado, onSeleccionarDia }: HorarioSemanalProps) {
-  const [diaManual, setDiaManual] = useState<string | null>(null)
-  const diaActivo = diaManual || diaInicial || 'Lunes'
+  const diaActivo = diaInicial || 'Lunes'
 
   const { inicioSemanaDate, rangoFechas } = useMemo(() => {
     const baseDate = fechaInicio ? new Date(`${fechaInicio}T12:00:00`) : new Date()
@@ -70,7 +69,6 @@ export default function HorarioSemanal({ semanaActual, semanaNum, mesocicloActiv
   }, [calcularFechaDia, diaActivoValido, horarioPersonalizado, onSeleccionarDia])
 
   const manejarClicDia = (d: DiaHorario) => {
-    setDiaManual(d.dia)
     const fecha = calcularFechaDia(d.dia).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     onSeleccionarDia(d.dia, d.enfoque || 'Entrenamiento General', fecha.charAt(0).toUpperCase() + fecha.slice(1), d.hora || '', d.aparatos || '')
   }

@@ -14,7 +14,8 @@ import {
   Legend,
   ReferenceLine
 } from 'recharts'
-import { calculateCurrentWeek, getWeekPlan, type PlanningConfig, type MicrocycleType } from '../../lib/sports-planning'
+import { buildMacroChartData, macroSeriesColors } from '../../lib/macro-chart'
+import { calculateCurrentWeek, getWeekPlan, type PlanningConfig } from '../../lib/sports-planning'
 
 interface GraficosCargaProps {
   semanaNum: number;
@@ -53,16 +54,6 @@ interface CustomTickProps {
   payload?: { value?: string }
   datosMacrociclo?: MacroChartData[]
   semanaNum?: number
-}
-
-const microcycleChartStyle: Record<MicrocycleType, { tipo: string; color: string }> = {
-  A: { tipo: 'Ajuste', color: '#34d399' },
-  C: { tipo: 'Carga', color: '#fbbf24' },
-  CH: { tipo: 'Choque', color: '#f43f5e' },
-  R: { tipo: 'Recuperación', color: '#60a5fa' },
-  AP: { tipo: 'Aproximación', color: '#a78bfa' },
-  COMP: { tipo: 'Competencia', color: '#f59e0b' },
-  T: { tipo: 'Tránsito', color: '#94a3b8' },
 }
 
 function CustomTooltip({ active, payload, semanaNum, semanaRealActual }: CustomTooltipProps) {
@@ -118,26 +109,9 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
     return configuracion ? calculateCurrentWeek(configuracion) : 1
   }, [configuracion]);
 
-  const datosMacrociclo = useMemo<MacroChartData[]>(() => {
-    const total = Math.max(1, Number(configuracion?.semanas_totales || 24))
-    return Array.from({ length: total }, (_, i) => {
-      const semana = i + 1
-      const plan = configuracion
-        ? getWeekPlan(configuracion, semana)
-        : getWeekPlan({ semanas_totales: total, semanas_preparatorio: 19, semanas_competitivo: 5 }, semana)
-      const micro = microcycleChartStyle[plan.microciclo]
-      
-      return { 
-        name: `S${semana}`,
-        semanaOriginal: semana,
-        tipoMicrociclo: micro.tipo,
-        colorMicrociclo: micro.color,
-        Volumen: plan.carga.volumen,
-        Intensidad: plan.carga.intensidad,
-        FormaDeportiva: plan.carga.forma
-      };
-    });
-  }, [configuracion]);
+  const datosMacrociclo = useMemo<MacroChartData[]>(() => buildMacroChartData(configuracion || {
+    semanas_totales: 24, semanas_preparatorio: 19, semanas_competitivo: 5,
+  }), [configuracion]);
 
   // 🔥 LÓGICA DINÁMICA: Calcula el enfoque primario de la tarjeta oscura según la semana clickeada
   const estadoFase = useMemo(() => {
@@ -191,9 +165,9 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
               {/* 🔥 PIN PERMANENTE: Dibuja una línea roja y una etiqueta en la "Semana Actual Real" 🔥 */}
               <ReferenceLine x={`S${semanaRealActual}`} stroke="#f43f5e" strokeWidth={2} strokeDasharray="4 4" label={{ position: 'top', value: 'HOY', fill: '#f43f5e', fontSize: 10, fontWeight: 'black', dy: -10 }} />
 
-              <Bar dataKey="Volumen" barSize={10} fill="#60a5fa" radius={[4, 4, 0, 0]} name="Volumen Total" />
-              <Bar dataKey="Intensidad" barSize={5} fill="#fb7185" radius={[4, 4, 0, 0]} name="Intensidad de Carga" />
-              <Line type="monotone" dataKey="FormaDeportiva" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0, fill: '#059669' }} name="Forma Deportiva" />
+              <Bar dataKey="Volumen" barSize={10} fill={macroSeriesColors.volumen} radius={[4, 4, 0, 0]} name="Volumen Total" />
+              <Bar dataKey="Intensidad" barSize={5} fill={macroSeriesColors.intensidad} radius={[4, 4, 0, 0]} name="Intensidad de Carga" />
+              <Line type="monotone" dataKey="FormaDeportiva" stroke={macroSeriesColors.forma} strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0, fill: '#059669' }} name="Forma Deportiva" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
