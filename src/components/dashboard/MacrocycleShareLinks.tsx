@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, Eye, EyeOff, Link2, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Eye, EyeOff, Link2, Loader2 } from 'lucide-react'
 
 type Group = { id: string; nombre: string; nivel: string }
 type Link = { id: string; grupo_id: string | null; token: string; activo: boolean }
@@ -14,6 +14,7 @@ export default function MacrocycleShareLinks() {
   const [busy, setBusy] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -63,9 +64,14 @@ export default function MacrocycleShareLinks() {
 
   if (!available) return null
   return <section className="mb-7 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm sm:p-6 print:hidden">
-    <div className="flex items-start gap-3"><span className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><Link2 className="h-5 w-5"/></span><div><h2 className="text-lg font-black text-slate-900">Enlaces de macrociclos</h2><p className="mt-1 text-sm text-slate-600">Comparte un calendario de solo lectura para todos los equipos o para un equipo específico. Desactiva el enlace para cerrar el acceso.</p></div></div>
-    {loading ? <p className="mt-4 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin"/>Cargando enlaces...</p> : null}
+    <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} aria-controls="macrocycle-share-links" className="flex w-full items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+      <span className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><Link2 className="h-5 w-5"/></span>
+      <span className="min-w-0 flex-1"><span className="block text-lg font-black text-slate-900">Enlaces de macrociclos</span><span className="mt-0.5 block text-sm text-slate-600">{loading ? 'Cargando enlaces...' : `${groups.length} equipos configurados · ${links.filter(link => link.activo).length} enlaces activos`}</span></span>
+      {loading ? <Loader2 className="h-5 w-5 animate-spin text-indigo-600"/> : <ChevronDown className={`h-5 w-5 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`}/>}
+    </button>
     {error ? <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700" role="alert">{error}</p> : null}
+    <div id="macrocycle-share-links" hidden={!expanded}>
+    <p className="mt-4 text-sm text-slate-600">Comparte un calendario de solo lectura para todos los equipos o para un equipo específico. Desactiva el enlace para cerrar el acceso.</p>
     {!loading && groups.length === 0 && !error ? <p className="mt-4 text-sm text-slate-500">Configura al menos un macrociclo con fechas y días de entrenamiento para crear un enlace.</p> : null}
     {groups.length ? <div className="mt-4 space-y-3">
       {([{ id: null, nombre: 'Todos los equipos configurados', nivel: 'Enlace general' }, ...groups] as Array<{ id: string | null; nombre: string; nivel: string }>).map(group => {
@@ -84,5 +90,6 @@ export default function MacrocycleShareLinks() {
         </div>
       })}
     </div> : null}
+    </div>
   </section>
 }
