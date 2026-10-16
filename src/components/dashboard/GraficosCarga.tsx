@@ -78,7 +78,7 @@ function CustomTooltip({ active, payload, semanaNum, semanaRealActual }: CustomT
           <div key={index} className="flex items-center gap-2 mb-1.5 last:mb-0">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wide w-24">{entry.name}:</span>
-            <span className="text-sm font-black" style={{ color: entry.color }}>{entry.value}%</span>
+            <span className="text-sm font-black" style={{ color: entry.color }}>{entry.value}/100</span>
           </div>
         ))}
       </div>
@@ -122,8 +122,9 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
     if (plan?.etapa === 'Preparación General') return { enfoque: 'Construcción / Base Física', estado: 'Acumulativo', color: 'text-emerald-400' };
     if (plan?.etapa === 'Preparación Especial') return { enfoque: 'Desarrollo Técnico Específico', estado: 'Intensivo', color: 'text-amber-400' };
     if (plan?.etapa === 'Pre-Competitiva') return { enfoque: 'Modelado Competitivo', estado: 'Pre-Competencia', color: 'text-purple-400' };
-    if (plan?.etapa === 'Competitiva') return { enfoque: 'Puesta a Punto (Tapering)', estado: 'PICO DE FORMA', color: 'text-rose-400' };
-    return { enfoque: 'Recuperación Activa', estado: 'Transición', color: 'text-slate-400' };
+    if (plan?.etapa === 'Competitiva') return { enfoque: plan.mesociclo, estado: 'Competencia', color: 'text-rose-400' };
+    if (plan?.etapa === 'Continuidad') return { enfoque: 'Reorganización técnica', estado: 'Continuidad', color: 'text-indigo-400' };
+    return { enfoque: 'Recuperación Activa', estado: plan?.etapa || 'Transición', color: 'text-slate-400' };
   }, [semanaNum, datosMacrociclo, configuracion]);
 
   return (
@@ -135,7 +136,7 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
             Dinámica de Cargas <Activity className="w-5 h-5 text-indigo-500" />
           </h3>
           <p className="text-xs md:text-sm font-medium text-slate-500 mt-1 max-w-xl">
-            Curvas de Matveyev: Volumen vs Intensidad a lo largo del Macrociclo. Los puntos inferiores indican el tipo de Microciclo.
+            Índices orientativos de carga y puesta a punto por semana. La forma proyectada es una meta del plan, no una medición de las gimnastas. Los puntos indican el microciclo.
           </p>
         </div>
         
@@ -145,6 +146,8 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#f43f5e]"></div> Choque</div>
            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#60a5fa]"></div> Recup.</div>
            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#a78bfa]"></div> Aprox.</div>
+           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#f59e0b]"></div> Competencia</div>
+           <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#94a3b8]"></div> Transición</div>
         </div>
       </div>
 
@@ -156,7 +159,7 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
               
               <XAxis dataKey="name" tick={<CustomTick datosMacrociclo={datosMacrociclo} semanaNum={semanaNum} />} tickLine={false} axisLine={false} />
               
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} tickLine={false} axisLine={false} domain={[0, 100]} />
               
               <Tooltip content={<CustomTooltip semanaNum={semanaNum} semanaRealActual={semanaRealActual} />} cursor={{ fill: '#f1f5f9', opacity: 0.5 }} />
               
@@ -167,7 +170,7 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
 
               <Bar dataKey="Volumen" barSize={10} fill={macroSeriesColors.volumen} radius={[4, 4, 0, 0]} name="Volumen Total" />
               <Bar dataKey="Intensidad" barSize={5} fill={macroSeriesColors.intensidad} radius={[4, 4, 0, 0]} name="Intensidad de Carga" />
-              <Line type="monotone" dataKey="FormaDeportiva" stroke={macroSeriesColors.forma} strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0, fill: '#059669' }} name="Forma Deportiva" />
+              <Line type="monotone" dataKey="FormaDeportiva" stroke={macroSeriesColors.forma} strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8, strokeWidth: 0, fill: '#059669' }} name="Puesta a punto objetivo" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -195,7 +198,7 @@ export default function GraficosCarga({ semanaNum, mesocicloActivo, configuracio
             <p className="text-xs md:text-sm font-bold text-slate-300 mt-1">{estadoFase.enfoque}</p>
           </div>
           <div className="text-left md:text-right">
-            <p className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado Biológico</p>
+            <p className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">Tipo de semana</p>
             <p className={`text-xs md:text-sm font-bold mt-1 flex items-center md:justify-end gap-1 px-3 py-1 rounded-lg bg-white/5 ${estadoFase.color}`}>
               {estadoFase.estado}
             </p>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { ChevronDown, ChevronRight, Settings2, CalendarDays } from 'lucide-react'
-import { buildPlanningModel, calculateCurrentWeek, getWeekPlan, MICRO_CYCLE_STYLE, type PlanningConfig } from '../../lib/sports-planning'
+import { calculateCurrentWeek, getTotalWeeks, getWeekPlan, MICRO_CYCLE_STYLE, type PlanningConfig } from '../../lib/sports-planning'
 
 type TituloFilaProps = {
   titulo: string
@@ -25,6 +25,22 @@ function TituloFila({ titulo, estado, setEstado }: TituloFilaProps) {
   )
 }
 
+function contiguousSegments(values: string[]) {
+  return values.reduce<Array<{ label: string; count: number }>>((segments, label) => {
+    const last = segments[segments.length - 1]
+    if (last?.label === label) last.count += 1
+    else segments.push({ label, count: 1 })
+    return segments
+  }, [])
+}
+
+function periodForStage(stage: string) {
+  if (stage === 'Competitiva' || stage === 'Pre-Competitiva') return 'Competitivo'
+  if (stage === 'Recuperación' || stage === 'Transición') return 'Recuperación'
+  if (stage === 'Continuidad') return 'Continuidad'
+  return 'Preparatorio'
+}
+
 export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, semanaSeleccionada }: PlanAnualGridProps) {
   const [verPeriodos, setVerPeriodos] = useState(true)
   const [verEtapas, setVerEtapas] = useState(true)
@@ -36,7 +52,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
   }, [configuracion]);
 
   const { semanas, meses } = useMemo(() => {
-    const totalSemanas = Math.max(0, Number(configuracion?.semanas_totales || 0))
+    const totalSemanas = configuracion ? getTotalWeeks(configuracion) : 0
     if (!configuracion || totalSemanas <= 0 || !configuracion.fecha_inicio) return { semanas: [] as number[], meses: [] }
     
     const sems = Array.from({ length: totalSemanas }, (_, i) => i + 1)
@@ -59,36 +75,12 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
 
   if (!configuracion || Number(configuracion.semanas_totales || 0) <= 0) return null
 
-  const planningModel = buildPlanningModel(configuracion)
-  const total = planningModel.total
-  const anchoPrep = (planningModel.preparatorio / total) * 100
-  const anchoComp = (planningModel.competitivo / total) * 100
-  
-  const semGral = planningModel.general
-  const semEsp = planningModel.especial
-  const semPreComp = planningModel.precompetitivo
-  const semComp = planningModel.competitivoPico
-
-  const anchoGral = (semGral / total) * 100
-  const anchoEsp = (semEsp / total) * 100
-  const anchoPreComp = (semPreComp / total) * 100
-  const anchoCompFase = (semComp / total) * 100
-
-  const semEntrante = planningModel.entrante
-  const semBasicoDes = planningModel.basicoDesarrollador
-  const semBasicoEst = planningModel.basicoEstabilizador
-  const semControl = planningModel.control
-  const semPulimiento = planningModel.pulimiento
-  const semCompetitivoMeso = planningModel.competitivoMeso
-  const semRestablecimiento = planningModel.restablecimiento
-
-  const wEntrante = (semEntrante / total) * 100
-  const wBasicoDes = (semBasicoDes / total) * 100
-  const wBasicoEst = (semBasicoEst / total) * 100
-  const wControl = (semControl / total) * 100
-  const wPulimiento = (semPulimiento / total) * 100
-  const wCompetitivoMeso = (semCompetitivoMeso / total) * 100
-  const wRestablecimiento = (semRestablecimiento / total) * 100
+  const total = semanas.length
+  const planes = semanas.map(semana => getWeekPlan(configuracion, semana))
+  const periodos = contiguousSegments(planes.map(plan => periodForStage(plan.etapa)))
+  const etapas = contiguousSegments(planes.map(plan => plan.etapa))
+  const mesociclos = contiguousSegments(planes.map(plan => plan.mesociclo))
+  const segmentWidth = (count: number) => `${(count / total) * 100}%`
 
   const manejarClicSemana = (semana: number) => {
     if (!onSeleccionarSemana) return
@@ -101,7 +93,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
       <div className="bg-[#0a0f1c] px-6 py-4 flex justify-between items-center border-b border-slate-800">
         <div className="flex items-center gap-2">
           <Settings2 className="w-5 h-5 text-indigo-400" />
-          <h2 className="text-lg font-bold text-white tracking-tight">Macrociclo Anual ({configuracion.semanas_totales} Semanas)</h2>
+          <h2 className="text-lg font-bold text-white tracking-tight">Macrociclo Anual ({total} Semanas)</h2>
         </div>
       </div>
 
@@ -144,8 +136,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
             <TituloFila titulo="PERIODOS" estado={verPeriodos} setEstado={setVerPeriodos} />
             {verPeriodos && (
               <div className="flex-1 flex gap-1 p-1">
-                {anchoPrep > 0 && <div className="bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center rounded shadow-sm overflow-hidden" style={{ width: `${anchoPrep}%` }}>PREPARATORIO</div>}
-                {anchoComp > 0 && <div className="bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center rounded shadow-sm overflow-hidden" style={{ width: `${anchoComp}%` }}>COMPETITIVO</div>}
+                {periodos.map((item, index) => <div key={index} className={`text-white text-[10px] font-bold flex items-center justify-center rounded shadow-sm overflow-hidden ${item.label === 'Competitivo' ? 'bg-rose-600' : item.label === 'Preparatorio' ? 'bg-slate-800' : item.label === 'Recuperación' ? 'bg-sky-600' : 'bg-indigo-600'}`} style={{ width: segmentWidth(item.count) }} title={item.label}>{item.label.toUpperCase()}</div>)}
               </div>
             )}
           </div>
@@ -154,10 +145,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
             <TituloFila titulo="ETAPAS" estado={verEtapas} setEstado={setVerEtapas} />
             {verEtapas && (
               <div className="flex-1 flex gap-1 p-1 text-[9px] font-bold text-slate-800">
-                {anchoGral > 0 && <div className="bg-slate-200 flex items-center justify-center rounded border border-slate-300 overflow-hidden" style={{ width: `${anchoGral}%` }}>P. General</div>}
-                {anchoEsp > 0 && <div className="bg-slate-300 flex items-center justify-center rounded border border-slate-400 overflow-hidden" style={{ width: `${anchoEsp}%` }}>P. Especial</div>}
-                {anchoPreComp > 0 && <div className="bg-rose-100 text-rose-800 flex items-center justify-center rounded border border-rose-300 overflow-hidden" style={{ width: `${anchoPreComp}%` }}>Pre-Comp</div>}
-                {anchoCompFase > 0 && <div className="bg-rose-200 text-rose-900 flex items-center justify-center rounded border border-rose-400 overflow-hidden" style={{ width: `${anchoCompFase}%` }}>Competitiva</div>}
+                {etapas.map((item, index) => <div key={index} className={`flex items-center justify-center rounded border overflow-hidden ${item.label === 'Competitiva' ? 'bg-rose-200 text-rose-900 border-rose-400' : item.label === 'Pre-Competitiva' ? 'bg-rose-100 text-rose-800 border-rose-300' : item.label === 'Recuperación' || item.label === 'Transición' ? 'bg-sky-100 text-sky-800 border-sky-300' : item.label === 'Continuidad' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-slate-200 border-slate-300'}`} style={{ width: segmentWidth(item.count) }} title={item.label}>{item.label === 'Preparación General' ? 'P. General' : item.label === 'Preparación Especial' ? 'P. Especial' : item.label === 'Pre-Competitiva' ? 'Pre-Comp' : item.label}</div>)}
               </div>
             )}
           </div>
@@ -166,13 +154,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
             <TituloFila titulo="MESOCICLOS" estado={verMesociclos} setEstado={setVerMesociclos} />
             {verMesociclos && (
               <div className="flex-1 flex gap-1 p-1 text-[9px] font-bold text-slate-700 text-center leading-tight">
-                {wEntrante > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wEntrante}%` }}>Entrante</div>}
-                {wBasicoDes > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wBasicoDes}%` }}>Básico Desarrollador</div>}
-                {wBasicoEst > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wBasicoEst}%` }}>Básico Estabilizador</div>}
-                {wControl > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wControl}%` }}>Control y Prep.</div>}
-                {wPulimiento > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wPulimiento}%` }}>Pulimiento</div>}
-                {wCompetitivoMeso > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wCompetitivoMeso}%` }}>Competitivo</div>}
-                {wRestablecimiento > 0 && <div className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: `${wRestablecimiento}%` }}>Restablecim.</div>}
+                {mesociclos.map((item, index) => <div key={index} className="bg-white flex items-center justify-center rounded border-2 border-slate-200 overflow-hidden px-1" style={{ width: segmentWidth(item.count) }} title={item.label}>{item.label}</div>)}
               </div>
             )}
           </div>
@@ -182,7 +164,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
             {verMicrociclos && (
               <div className="flex-1 flex gap-[2px] p-1 relative overflow-visible">
                 {semanas.map((semana) => {
-                  const planSemana = getWeekPlan(configuracion, semana)
+                  const planSemana = planes[semana - 1]
                   const bgColor = MICRO_CYCLE_STYLE[planSemana.microciclo].color
                   const tipo = planSemana.microciclo
 
@@ -206,7 +188,7 @@ export default function PlanAnualGrid({ configuracion, onSeleccionarSemana, sema
                         flex items-center justify-center text-[10px] font-black text-white relative
                         ${anilloEstilo}
                       `} 
-                      title={`Planificar Semana ${semana}`}
+                      title={`Semana ${semana}: ${planSemana.objetivo} · ${MICRO_CYCLE_STYLE[tipo].label}`}
                     >
                        {tipo}
                     </div>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Dumbbell, LockKeyhole, Loader2 } from 'lucide-react'
 import { getWeeklyLoadDays } from '../../lib/weekly-load-planning'
-import { getWeekPlan } from '../../lib/sports-planning'
+import { getTotalWeeks, getWeekPlan } from '../../lib/sports-planning'
 import type { SharedGroup, SharedSession } from '../../lib/shared-macrocycles'
 
 type Payload = { club: string; groups: SharedGroup[]; sessions: SharedSession[] }
@@ -67,7 +67,7 @@ export default function SharedMacrocycleCalendar({ token }: { token: string }) {
     const map = new Map<string, DayEntry[]>()
     if (!payload) return map
     for (const group of visibleGroups) {
-      const weeks = Math.min(260, Number(group.config.semanas_totales || 0))
+      const weeks = Math.min(260, getTotalWeeks(group.config))
       for (let week = 1; week <= weeks; week += 1) {
         const plan = getWeekPlan(group.config, week)
         for (const day of getWeeklyLoadDays(group.config, week, group.config.horario_semanal)) {

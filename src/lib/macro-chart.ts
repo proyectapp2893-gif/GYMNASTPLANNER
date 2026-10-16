@@ -1,4 +1,4 @@
-import { getWeekPlan, type PlanningConfig, type MicrocycleType } from './sports-planning'
+import { getTotalWeeks, getWeekPlan, type PlanningConfig, type MicrocycleType } from './sports-planning'
 
 export const microcycleChartStyle: Record<MicrocycleType, { tipo: string; color: string }> = {
   A: { tipo: 'Ajuste', color: '#34d399' },
@@ -13,7 +13,7 @@ export const microcycleChartStyle: Record<MicrocycleType, { tipo: string; color:
 export const macroSeriesColors = { volumen: '#60a5fa', intensidad: '#fb7185', forma: '#10b981' }
 
 export function buildMacroChartData(config: PlanningConfig) {
-  return Array.from({ length: Math.max(1, Number(config.semanas_totales || 1)) }, (_, index) => {
+  return Array.from({ length: getTotalWeeks(config) }, (_, index) => {
     const plan = getWeekPlan(config, index + 1)
     const micro = microcycleChartStyle[plan.microciclo]
     return { name: `S${index + 1}`, semanaOriginal: index + 1, tipoMicrociclo: micro.tipo,

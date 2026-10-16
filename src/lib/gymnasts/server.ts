@@ -86,11 +86,11 @@ export const getGymnastAnnualConfiguration=cache(async(gymnastId:string):Promise
   if(error||!clubId)notFound()
   const {data:gymnast}=await supabase.from('atletas').select('grupo_id').eq('id',gymnastId).eq('club_id',clubId).is('deleted_at',null).maybeSingle()
   if(!gymnast?.grupo_id)return null
-  const {data,error:queryError}=await supabase.from('configuracion_grupos').select('fecha_inicio,fecha_competencia,semanas_totales,semanas_preparatorio,semanas_competitivo,competencias_secundarias').eq('grupo_id',gymnast.grupo_id).maybeSingle()
+  const {data,error:queryError}=await supabase.from('configuracion_grupos_efectiva').select('fecha_inicio,fecha_fin,fecha_competencia,semanas_totales,semanas_preparatorio,semanas_competitivo,competencias_secundarias').eq('grupo_id',gymnast.grupo_id).maybeSingle()
   if(queryError)throw new Error(`No se pudo cargar el macrociclo del grupo: ${queryError.message}`)
   if(!data)return null
   const secondary=Array.isArray(data.competencias_secundarias)?data.competencias_secundarias.filter(isRecord).map(item=>({nombre:asNullableString(item.nombre)||undefined,fecha:asNullableString(item.fecha)||undefined})):null
-  return{fecha_inicio:asNullableString(data.fecha_inicio),fecha_competencia:asNullableString(data.fecha_competencia),semanas_totales:typeof data.semanas_totales==='number'?data.semanas_totales:null,semanas_preparatorio:typeof data.semanas_preparatorio==='number'?data.semanas_preparatorio:null,semanas_competitivo:typeof data.semanas_competitivo==='number'?data.semanas_competitivo:null,competencias_secundarias:secondary}
+  return{fecha_inicio:asNullableString(data.fecha_inicio),fecha_fin:asNullableString(data.fecha_fin),fecha_competencia:asNullableString(data.fecha_competencia),semanas_totales:typeof data.semanas_totales==='number'?data.semanas_totales:null,semanas_preparatorio:typeof data.semanas_preparatorio==='number'?data.semanas_preparatorio:null,semanas_competitivo:typeof data.semanas_competitivo==='number'?data.semanas_competitivo:null,competencias_secundarias:secondary}
 })
 
 export async function getGymnastDashboardMetrics(gymnastId: string) {

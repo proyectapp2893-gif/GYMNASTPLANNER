@@ -90,6 +90,63 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
   const model = buildPlanningModel(config)
   const week = clamp(semana, 1, model.total)
   const competition = competitionProximity(config, week)
+  const eventWeeks = getConfiguredEventWeeks(config, model.total)
+  const mainWeek = eventWeeks.find(event => event.main)?.week ?? eventWeeks.at(-1)?.week
+
+  if (eventWeeks.length && mainWeek) {
+    const event = eventWeeks.find(item => item.week === week)
+    const nextEvent = eventWeeks.find(item => item.week > week)
+    const previousEvent = [...eventWeeks].reverse().find(item => item.week < week)
+    let etapa: string
+    let mesociclo: string
+    let microciclo: MicrocycleType
+
+    if (event) {
+      etapa = 'Competitiva'
+      mesociclo = event.main ? 'Competencia principal' : 'Control competitivo'
+      microciclo = 'COMP'
+    } else if (nextEvent?.week === week + 1) {
+      etapa = 'Pre-Competitiva'
+      mesociclo = 'Pulimiento'
+      microciclo = 'AP'
+    } else if (previousEvent?.week === week - 1) {
+      etapa = 'Recuperación'
+      mesociclo = 'Restablecimiento'
+      microciclo = 'R'
+    } else if (week === model.total && week > mainWeek) {
+      etapa = 'Transición'
+      mesociclo = 'Cierre de temporada'
+      microciclo = 'T'
+    } else if (week > mainWeek) {
+      etapa = 'Continuidad'
+      mesociclo = 'Reorganización técnica'
+      microciclo = week % 4 === 0 ? 'R' : 'C'
+    } else {
+      const buildWeeks = Math.max(1, mainWeek - 2)
+      const generalEnd = Math.max(1, Math.round(buildWeeks * 0.6))
+      const entryEnd = Math.max(1, Math.round(generalEnd * 0.3))
+      if (week <= generalEnd) {
+        etapa = 'Preparación General'
+        mesociclo = week <= entryEnd ? 'Entrante' : 'Básico Desarrollador'
+      } else {
+        etapa = 'Preparación Especial'
+        mesociclo = 'Básico Estabilizador'
+      }
+      microciclo = week === 1 ? 'A' : week % 4 === 0 ? 'R' : week > generalEnd && week % 3 === 0 ? 'CH' : 'C'
+    }
+
+    const carga = getEventAnchoredLoad(week, mainWeek, model.total, microciclo, Boolean(event?.main))
+    return {
+      semana: week,
+      objetivo: `${etapa} (${mesociclo})`,
+      etapa,
+      mesociclo,
+      microciclo,
+      carga,
+      competenciaCercana: competition.isNear || Boolean(event),
+      diasParaCompetencia: event ? 0 : competition.days,
+    }
+  }
 
   let etapa = 'Preparación General'
   let mesociclo = 'Entrante'
@@ -130,6 +187,44 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
     competenciaCercana: competition.isNear,
     diasParaCompetencia: competition.days,
   }
+}
+
+function getConfiguredEventWeeks(config: PlanningConfig, total: number) {
+  const start = config.fecha_inicio ? mondayOf(parseLocalDate(config.fecha_inicio)) : null
+  if (!start) return []
+  const events = [
+    ...(config.fecha_competencia ? [{ date: config.fecha_competencia, main: true }] : []),
+    ...(config.competencias_secundarias || []).filter(item => item.fecha).map(item => ({ date: item.fecha!, main: false })),
+  ]
+  return events.map(event => ({
+    week: Math.floor(Math.round((mondayOf(parseLocalDate(event.date)).getTime() - start.getTime()) / dayMs) / 7) + 1,
+    main: event.main,
+  })).filter(event => event.week >= 1 && event.week <= total)
+    .sort((a, b) => a.week - b.week || Number(b.main) - Number(a.main))
+}
+
+function getEventAnchoredLoad(week: number, mainWeek: number, total: number, microcycle: MicrocycleType, mainEvent: boolean) {
+  const progress = Math.min(1, (week - 1) / Math.max(1, mainWeek - 1))
+  let volumen = 85 - progress * 43
+  let intensidad = 30 + progress * 38
+  let forma = 20 + progress * 55
+
+  if (week > mainWeek) {
+    const postProgress = (week - mainWeek) / Math.max(1, total - mainWeek)
+    volumen = 48 + postProgress * 10
+    intensidad = 54 + postProgress * 10
+    forma = 65 + postProgress * 5
+  }
+  if (microcycle === 'CH') { volumen += 8; intensidad += 8; forma -= 3 }
+  if (microcycle === 'R') { volumen -= 18; intensidad -= 12; forma += 4 }
+  if (microcycle === 'AP') { volumen -= 15; intensidad += 5; forma += 8 }
+  if (microcycle === 'COMP') {
+    volumen = mainEvent ? 25 : 33
+    intensidad = mainEvent ? 68 : 65
+    forma = mainEvent ? 90 : 78
+  }
+  if (microcycle === 'T') { volumen = 20; intensidad = 40; forma = 55 }
+  return { volumen: Math.round(clamp(volumen, 10, 100)), intensidad: Math.round(clamp(intensidad, 10, 100)), forma: Math.round(clamp(forma, 10, 100)) }
 }
 
 export function getSessionTimeDistribution(objetivoFase: string, competenciaCercana = false) {
@@ -247,8 +342,17 @@ function competitionProximity(config: PlanningConfig, week: number) {
   return { isNear: nearest !== null && nearest <= 10, days: nearest }
 }
 
+export function getTotalWeeks(config: PlanningConfig) {
+  const stored = Math.max(1, Number(config.semanas_totales || 1))
+  if (!config.fecha_inicio || !config.fecha_fin || config.fecha_fin < config.fecha_inicio) return stored
+  const firstMonday = mondayOf(parseLocalDate(config.fecha_inicio))
+  const lastMonday = mondayOf(parseLocalDate(config.fecha_fin))
+  const calendarWeeks = Math.floor(Math.round((lastMonday.getTime() - firstMonday.getTime()) / dayMs) / 7) + 1
+  return Math.max(stored, calendarWeeks)
+}
+
 function normalizeTotalWeeks(config: PlanningConfig) {
-  return Math.max(1, Number(config.semanas_totales || 1))
+  return getTotalWeeks(config)
 }
 
 function parseLocalDate(value: string) {

@@ -8,6 +8,7 @@ import GestorInventario from '../../components/dashboard/GestorInventario'
 import type { Grupo } from '../../lib/types'
 import Image from 'next/image'
 import Link from 'next/link'
+import { getTotalWeeks, getWeekPlan } from '../../lib/sports-planning'
 import { useSearchParams } from 'next/navigation'
 
 type CompetenciaSecundaria = { nombre: string; fecha: string }
@@ -70,6 +71,9 @@ function ConfiguracionContenido() {
   // 🔥 NUEVO: Estado para las competencias preparatorias
   const [competenciasSecundarias, setCompetenciasSecundarias] = useState<CompetenciaSecundaria[]>([])
   const [calculo, setCalculo] = useState({ totales: 0, preparatorio: 0, competitivo: 0, general: 0, especial: 0 })
+  const semanaCompetencia = fechaInicio && fechaCompetencia && calculo.totales > 0
+    ? Array.from({ length: calculo.totales }, (_, index) => getWeekPlan({ fecha_inicio: fechaInicio, fecha_competencia: fechaCompetencia, semanas_totales: calculo.totales }, index + 1)).find(plan => plan.mesociclo === 'Competencia principal')?.semana
+    : undefined
 
   const [horario, setHorario] = useState(HORARIO_BASE)
   const [diasSugeridos, setDiasSugeridos] = useState(4)
@@ -177,12 +181,12 @@ function ConfiguracionContenido() {
     const cargarConfig = async () => {
       const { data } = await supabase.from('configuracion_grupos_efectiva').select('*').eq('grupo_id', grupoActivo).single()
       if (data) {
-        if (data.fecha_inicio) setFechaInicio(data.fecha_inicio)
-        if (data.fecha_fin) setFechaFin(data.fecha_fin)
-        if (data.fecha_competencia) setFechaCompetencia(data.fecha_competencia)
+        setFechaInicio(data.fecha_inicio || '')
+        setFechaFin(data.fecha_fin || '')
+        setFechaCompetencia(data.fecha_competencia || '')
         if (Array.isArray(data.horario_semanal)) setHorario(data.horario_semanal as DiaHorario[])
         // 🔥 NUEVO: Cargar competencias secundarias
-        if (Array.isArray(data.competencias_secundarias)) setCompetenciasSecundarias(data.competencias_secundarias as CompetenciaSecundaria[])
+        setCompetenciasSecundarias(Array.isArray(data.competencias_secundarias) ? data.competencias_secundarias as CompetenciaSecundaria[] : [])
       } else {
         setFechaInicio('')
         setFechaFin('')
@@ -203,7 +207,7 @@ function ConfiguracionContenido() {
       const diasTotales = Math.ceil(diferenciaTiempo / (1000 * 3600 * 24))
       
       if (diasTotales > 0) {
-        const semanasTotales = Math.floor(diasTotales / 7)
+        const semanasTotales = getTotalWeeks({ fecha_inicio: fechaInicio, fecha_fin: fechaFin })
         const prep = Math.round(semanasTotales * 0.8)
         const comp = semanasTotales - prep
         const gral = Math.round(prep * 0.6)
@@ -519,21 +523,15 @@ function ConfiguracionContenido() {
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-slate-300">P. Preparatorio (80%):</span>
-                    <span className="text-sm font-bold bg-slate-800 px-3 py-1 rounded-lg">{calculo.preparatorio} sem</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-4 border-l-2 border-slate-700">
-                    <span className="text-xs text-slate-400">General (60%)</span>
-                    <span className="text-xs font-bold text-slate-300">{calculo.general} sem</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-4 border-l-2 border-slate-700">
-                    <span className="text-xs text-slate-400">Especial (40%)</span>
-                    <span className="text-xs font-bold text-slate-300">{calculo.especial} sem</span>
+                    <span className="text-sm font-medium text-slate-300">{semanaCompetencia ? 'Antes de la competencia principal:' : 'P. Preparatorio estimado:'}</span>
+                    <span className="text-sm font-bold bg-slate-800 px-3 py-1 rounded-lg">{semanaCompetencia ? semanaCompetencia - 1 : calculo.preparatorio} sem</span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t border-slate-800">
-                    <span className="text-sm font-medium text-amber-400">P. Competitivo (20%):</span>
-                    <span className="text-sm font-bold bg-amber-500/20 text-amber-300 px-3 py-1 rounded-lg">{calculo.competitivo} sem</span>
+                    <span className="text-sm font-medium text-amber-400">{semanaCompetencia ? 'Competencia principal:' : 'P. Competitivo (estimado):'}</span>
+                    <span className="text-sm font-bold bg-amber-500/20 text-amber-300 px-3 py-1 rounded-lg">{semanaCompetencia ? `Semana ${semanaCompetencia}` : `${calculo.competitivo} sem`}</span>
                   </div>
+                  {semanaCompetencia && <p className="text-xs text-slate-400">Las semanas posteriores se muestran como recuperación y continuidad hasta que se registren nuevas competencias. Las fechas de competencia prevalecen sobre el reparto estimado 80/20.</p>}
+                  {!semanaCompetencia && competenciasSecundarias.some(item => item.fecha) && <p className="text-xs text-slate-400">Las competencias secundarias también se ubican por su fecha real en el plan. El reparto mostrado es solo una estimación.</p>}
                 </div>
               </div>
             </div>
