@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarRange, CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import { CalendarRange, CheckCircle2, Circle, Loader2, RefreshCw } from 'lucide-react'
 import { getWeekPlan, getWeekStartDate, type PlanningConfig } from '../../lib/sports-planning'
 import { getWeeklyLoadDays, localDateKey, type TrainingDay, type WeeklySession } from '../../lib/weekly-load-planning'
 
@@ -19,6 +19,8 @@ export default function DistribucionSemanal({ grupoId, configuracion, semanaNum,
   const [sessions, setSessions] = useState<WeeklySession[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [generationKey, setGenerationKey] = useState(0)
+  const [regenerated, setRegenerated] = useState(false)
   const monday = useMemo(() => getWeekStartDate(configuracion, semanaNum), [configuracion, semanaNum])
   const mondayKey = monday ? localDateKey(monday) : ''
 
@@ -39,13 +41,14 @@ export default function DistribucionSemanal({ grupoId, configuracion, semanaNum,
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || 'No se pudo consultar el historial')
         setSessions(payload.sessions || [])
+        if (generationKey > 0) setRegenerated(true)
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'No se pudo consultar el historial')
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [grupoId, mondayKey, refreshKey])
+  }, [grupoId, mondayKey, refreshKey, generationKey])
 
   const week = getWeekPlan(configuracion, semanaNum)
   const days = getWeeklyLoadDays(configuracion, semanaNum, horario, sessions)
@@ -63,9 +66,16 @@ export default function DistribucionSemanal({ grupoId, configuracion, semanaNum,
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><CalendarRange className="h-5 w-5 text-indigo-600"/>Distribuir cargas semanal</h2>
         <p className="mt-1 text-sm text-slate-600">{week.etapa} · {week.mesociclo} · Microciclo {week.microciclo}</p></div>
-      <div className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-800">Objetivo semanal: volumen {week.carga.volumen}% · intensidad {week.carga.intensidad}%</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-800">Objetivo semanal: volumen {week.carga.volumen}% · intensidad {week.carga.intensidad}%</div>
+        <button type="button" disabled={loading} onClick={() => { setRegenerated(false); setGenerationKey(value => value + 1) }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}
+          Generar cargas de la semana
+        </button>
+      </div>
     </div>
     <p className="mt-3 text-xs text-slate-500">Objetivos relativos de planificación. La carga realizada se evalúa con los registros de las gimnastas.</p>
+    {regenerated && !loading && !error ? <p className="mt-2 text-xs font-semibold text-emerald-700" role="status">Propuesta semanal actualizada con las sesiones guardadas. Abre cada día para revisar y guardar su entrenamiento.</p> : null}
     {error ? <p className="mt-3 text-sm text-rose-700" role="alert">{error}</p> : null}
     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {days.map(day => <button key={day.fecha} type="button" onClick={() => openDay(day)}
