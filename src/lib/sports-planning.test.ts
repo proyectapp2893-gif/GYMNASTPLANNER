@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildMacroChartData } from './macro-chart'
-import { getTotalWeeks, getWeekPlan, getWeekStartDate, type PlanningConfig } from './sports-planning'
+import { getSessionTimeDistribution, getTotalWeeks, getWeekPlan, getWeekStartDate, type PlanningConfig } from './sports-planning'
+import { getWeeklyLoadDays } from './weekly-load-planning'
 
 const octoberCompetition: PlanningConfig = {
   fecha_inicio: '2026-08-10',
@@ -31,14 +32,41 @@ describe('date anchored periodization', () => {
 
   it('identifies a secondary event as competition and recovers afterward', () => {
     expect(getWeekPlan(octoberCompetition, 6).microciclo).toBe('AP')
-    expect(getWeekPlan(octoberCompetition, 7)).toMatchObject({ mesociclo: 'Control competitivo', microciclo: 'COMP' })
+    expect(getWeekPlan(octoberCompetition, 7)).toMatchObject({ mesociclo: 'Competencia secundaria', microciclo: 'COMP' })
     expect(getWeekPlan(octoberCompetition, 8)).toMatchObject({ etapa: 'Recuperación', microciclo: 'R' })
   })
 
   it('does not need a main event to place a configured secondary competition', () => {
     const config = { ...octoberCompetition, fecha_competencia: null }
-    expect(getWeekPlan(config, 7)).toMatchObject({ mesociclo: 'Control competitivo', microciclo: 'COMP' })
+    expect(getWeekPlan(config, 7)).toMatchObject({ mesociclo: 'Competencia secundaria', microciclo: 'COMP' })
     expect(getWeekPlan(config, 8).microciclo).toBe('R')
+  })
+
+  it('rebuilds a specific load block when a December competition is added', () => {
+    const withDecember = {
+      ...octoberCompetition,
+      competencias_secundarias: [
+        ...octoberCompetition.competencias_secundarias!,
+        { nombre: 'Copa de diciembre', fecha: '2026-12-04' },
+      ],
+    }
+    expect(getWeekPlan(withDecember, 12)).toMatchObject({ etapa: 'Preparación Especial', mesociclo: 'Nuevo bloque específico', microciclo: 'C' })
+    expect(getWeekPlan(withDecember, 13).microciclo).toBe('CH')
+    expect(getWeekPlan(withDecember, 16).microciclo).toBe('AP')
+    expect(getWeekPlan(withDecember, 17)).toMatchObject({ etapa: 'Competitiva', microciclo: 'COMP' })
+    expect(getWeekPlan(withDecember, 18).microciclo).toBe('R')
+    expect(getWeekPlan(withDecember, 15).carga.forma).toBeLessThan(getWeekPlan(withDecember, 17).carga.forma)
+    expect(buildMacroChartData(withDecember)[16].tipoMicrociclo).toBe('Competencia')
+    expect(getSessionTimeDistribution(getWeekPlan(withDecember, 12).objetivo).prep_fisica).toBe('25')
+    expect(getSessionTimeDistribution(getWeekPlan(withDecember, 16).objetivo).rutinas).toBe('45')
+    const schedule = [{ dia: 'Lunes' }, { dia: 'Miércoles' }, { dia: 'Viernes' }]
+    expect(getWeeklyLoadDays(withDecember, 16, schedule)[0].volumen)
+      .toBeLessThan(getWeeklyLoadDays(withDecember, 15, schedule)[0].volumen)
+  })
+
+  it('ignores competitions after the configured season end', () => {
+    const outside = { ...octoberCompetition, competencias_secundarias: [{ fecha: '2026-12-19' }] }
+    expect(getWeekPlan(outside, 18).microciclo).toBe('T')
   })
 
   it('uses the original duration based plan when no competition date is configured', () => {

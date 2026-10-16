@@ -103,7 +103,7 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
 
     if (event) {
       etapa = 'Competitiva'
-      mesociclo = event.main ? 'Competencia principal' : 'Control competitivo'
+      mesociclo = event.main ? 'Competencia principal' : 'Competencia secundaria'
       microciclo = 'COMP'
     } else if (nextEvent?.week === week + 1) {
       etapa = 'Pre-Competitiva'
@@ -117,6 +117,11 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
       etapa = 'Transición'
       mesociclo = 'Cierre de temporada'
       microciclo = 'T'
+    } else if (week > mainWeek && nextEvent && previousEvent) {
+      etapa = 'Preparación Especial'
+      mesociclo = 'Nuevo bloque específico'
+      const weeksSinceEvent = week - previousEvent.week
+      microciclo = weeksSinceEvent % 4 === 0 ? 'R' : weeksSinceEvent >= 3 && weeksSinceEvent % 3 === 0 ? 'CH' : 'C'
     } else if (week > mainWeek) {
       etapa = 'Continuidad'
       mesociclo = 'Reorganización técnica'
@@ -135,7 +140,10 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
       microciclo = week === 1 ? 'A' : week % 4 === 0 ? 'R' : week > generalEnd && week % 3 === 0 ? 'CH' : 'C'
     }
 
-    const carga = getEventAnchoredLoad(week, mainWeek, model.total, microciclo, Boolean(event?.main))
+    const carga = getEventAnchoredLoad(
+      week, mainWeek, model.total, microciclo, Boolean(event?.main),
+      previousEvent?.week, event?.week ?? nextEvent?.week
+    )
     return {
       semana: week,
       objetivo: `${etapa} (${mesociclo})`,
@@ -190,12 +198,13 @@ export function getWeekPlan(config: PlanningConfig, semana: number): WeekPlan {
 }
 
 function getConfiguredEventWeeks(config: PlanningConfig, total: number) {
-  const start = config.fecha_inicio ? mondayOf(parseLocalDate(config.fecha_inicio)) : null
-  if (!start) return []
+  const startDate = config.fecha_inicio
+  if (!startDate) return []
+  const start = mondayOf(parseLocalDate(startDate))
   const events = [
     ...(config.fecha_competencia ? [{ date: config.fecha_competencia, main: true }] : []),
     ...(config.competencias_secundarias || []).filter(item => item.fecha).map(item => ({ date: item.fecha!, main: false })),
-  ]
+  ].filter(event => event.date >= startDate && (!config.fecha_fin || event.date <= config.fecha_fin))
   return events.map(event => ({
     week: Math.floor(Math.round((mondayOf(parseLocalDate(event.date)).getTime() - start.getTime()) / dayMs) / 7) + 1,
     main: event.main,
@@ -203,13 +212,21 @@ function getConfiguredEventWeeks(config: PlanningConfig, total: number) {
     .sort((a, b) => a.week - b.week || Number(b.main) - Number(a.main))
 }
 
-function getEventAnchoredLoad(week: number, mainWeek: number, total: number, microcycle: MicrocycleType, mainEvent: boolean) {
+function getEventAnchoredLoad(
+  week: number, mainWeek: number, total: number, microcycle: MicrocycleType,
+  mainEvent: boolean, previousEventWeek?: number, upcomingEventWeek?: number
+) {
   const progress = Math.min(1, (week - 1) / Math.max(1, mainWeek - 1))
   let volumen = 85 - progress * 43
   let intensidad = 30 + progress * 38
   let forma = 20 + progress * 55
 
-  if (week > mainWeek) {
+  if (week > mainWeek && previousEventWeek && upcomingEventWeek) {
+    const blockProgress = (week - previousEventWeek) / Math.max(1, upcomingEventWeek - previousEventWeek)
+    volumen = 58 - blockProgress * 20
+    intensidad = 55 + blockProgress * 18
+    forma = 62 + blockProgress * 15
+  } else if (week > mainWeek) {
     const postProgress = (week - mainWeek) / Math.max(1, total - mainWeek)
     volumen = 48 + postProgress * 10
     intensidad = 54 + postProgress * 10
@@ -219,9 +236,9 @@ function getEventAnchoredLoad(week: number, mainWeek: number, total: number, mic
   if (microcycle === 'R') { volumen -= 18; intensidad -= 12; forma += 4 }
   if (microcycle === 'AP') { volumen -= 15; intensidad += 5; forma += 8 }
   if (microcycle === 'COMP') {
-    volumen = mainEvent ? 25 : 33
-    intensidad = mainEvent ? 68 : 65
-    forma = mainEvent ? 90 : 78
+    volumen = mainEvent ? 25 : 30
+    intensidad = mainEvent ? 68 : 66
+    forma = mainEvent ? 90 : week > mainWeek ? 85 : 78
   }
   if (microcycle === 'T') { volumen = 20; intensidad = 40; forma = 55 }
   return { volumen: Math.round(clamp(volumen, 10, 100)), intensidad: Math.round(clamp(intensidad, 10, 100)), forma: Math.round(clamp(forma, 10, 100)) }

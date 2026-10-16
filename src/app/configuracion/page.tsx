@@ -251,6 +251,8 @@ function ConfiguracionContenido() {
     if (!fechaInicio || !fechaFin) return mostrarToast("Define el inicio y el fin de la temporada", "error")
     if (fechaFin < fechaInicio) return mostrarToast("El fin de temporada no puede ser anterior al inicio", "error")
     if (fechaCompetencia && (fechaCompetencia < fechaInicio || fechaCompetencia > fechaFin)) return mostrarToast("La competencia fundamental debe estar dentro de la temporada", "error")
+    if (competenciasSecundarias.some(comp => comp.nombre.trim() && !comp.fecha)) return mostrarToast("Completa la fecha de cada torneo agregado", "error")
+    if (competenciasSecundarias.some(comp => comp.fecha && (comp.fecha < fechaInicio || comp.fecha > fechaFin))) return mostrarToast("Un torneo queda fuera de la temporada. Amplía la fecha de fin o corrige la fecha del torneo", "error")
     if (horario.length === 0) return mostrarToast("Configura al menos un día de entrenamiento", "error")
     if (horario.some(dia => !dia.enfoque.trim() || !dia.aparatos.trim() || !dia.hora.trim())) return mostrarToast("Completa el enfoque, los aparatos y el horario de cada día", "error")
     setGuardandoConfig(true)
@@ -459,7 +461,7 @@ function ConfiguracionContenido() {
                 {/* 🔥 NUEVO: SECCIÓN DE COMPETENCIAS SECUNDARIAS */}
                 <div className="mt-6 pt-6 border-t border-slate-100">
                   <div className="flex items-center justify-between mb-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Torneos Preparatorios</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Otras competencias</label>
                     <button
                       onClick={() => setCompetenciasSecundarias([...competenciasSecundarias, { nombre: '', fecha: '' }])}
                       type="button"
@@ -470,7 +472,7 @@ function ConfiguracionContenido() {
                   </div>
 
                   {competenciasSecundarias.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">No hay torneos de fogueo programados.</p>
+                    <p className="text-xs text-slate-400 italic">No hay otras competencias programadas.</p>
                   ) : (
                     <div className="space-y-3">
                       {competenciasSecundarias.map((comp, index) => (

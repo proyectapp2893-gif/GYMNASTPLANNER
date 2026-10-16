@@ -553,7 +553,8 @@ export default function ConstructorSesion({
             ...competenciasSecundarias,
           ],
           diasEntrenamiento,
-          fechaSesionActual: parsearFecha(fechaExactaDia)
+          fechaSesionActual: parsearFecha(fechaExactaDia),
+          cargaDia: cargaDia?.fecha === parsearFecha(fechaExactaDia) ? { volumen: cargaDia.volumen, intensidad: cargaDia.intensidad } : undefined,
         })
       })
       const iaSugerencia = await response.json() as IaSesionResponse

@@ -59,6 +59,11 @@ export async function POST(request: Request) {
       fechaSesionActual,
       competenciasSecundarias.map(comp => comp.fecha)
     )
+    const indicacionCompetencia = proximidadCompetencia.days === 0
+      ? 'La competencia es hoy: evita cargas de entrenamiento adicionales; prioriza calentamiento, rutinas previstas y recuperación.'
+      : proximidadCompetencia.isNear
+        ? `Competencia en ${proximidadCompetencia.days} dias: reduce la fatiga acumulada y prioriza calidad tecnica, rutinas y recuperación.`
+        : ''
 
     const { data: clubData } = await supabase
       .from('clubs')
@@ -169,7 +174,7 @@ export async function POST(request: Request) {
         CONTEXTO Y RESTRICCIONES:
         - Nivel: ${nivel} | Fase: ${objetivo} | Horario: ${horario}
         - Frecuencia semanal: ${diasEntrenamiento} dias
-        ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: reduce carga pesada, evita fallo muscular y prioriza calidad tecnica.` : ''}
+        ${indicacionCompetencia ? `- ${indicacionCompetencia}` : ''}
         ${contextoInventario}
         ${contextoTestFisicos}
         CONOCIMIENTO DEPORTIVO APROBADO Y TRAZABLE: ${JSON.stringify(conocimientoAprobado)}
@@ -210,7 +215,7 @@ export async function POST(request: Request) {
       - Sesiones anteriores guardadas, de reciente a antigua: ${JSON.stringify(recentSessions)}
       - IDs de ejercicios usados recientemente y número de apariciones: ${JSON.stringify(Object.fromEntries(recentUsage))}
       - Continúa la progresión del grupo y alterna estímulos y recuperación. Evita repetir ejercicios recientes cuando haya alternativas adecuadas para el mismo objetivo; conserva los básicos necesarios.
-      ${proximidadCompetencia.isNear ? `- Competencia cercana en ${proximidadCompetencia.days} dias: estamos en descarga/taper. Reduce preparacion fisica pesada y prioriza rutinas, tecnica limpia, recuperacion y confianza.` : ''}
+      ${indicacionCompetencia ? `- ${indicacionCompetencia}` : ''}
       ${contextoInventario}
       ${contextoTestFisicos}
       CONOCIMIENTO DEPORTIVO APROBADO Y TRAZABLE: ${JSON.stringify(conocimientoAprobado)}
