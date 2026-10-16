@@ -29,7 +29,7 @@ export function isConfiguredMacrocycle(config: { fecha_inicio?: string | null; s
 
 export async function getConfiguredGroups(clubId: string): Promise<SharedGroup[]> {
   const db = createSupabaseServiceClient()
-  const { data: groups, error: groupError } = await db.from('grupos').select('id,nombre,nivel').eq('club_id', clubId).is('deleted_at', null).order('nivel').order('nombre')
+  const { data: groups, error: groupError } = await db.from('grupos').select('id,nombre,nivel').eq('club_id', clubId).order('nivel').order('nombre')
   if (groupError) throw groupError
   const ids = (groups || []).map(group => group.id)
   if (!ids.length) return []

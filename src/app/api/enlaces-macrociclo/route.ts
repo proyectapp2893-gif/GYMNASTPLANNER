@@ -29,7 +29,7 @@ export async function GET() {
     return NextResponse.json({ groups: groups.map(({ id, nombre, nivel }) => ({ id, nombre, nivel })), links: links.data || [] }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     console.error('Error consultando enlaces:', error)
-    return NextResponse.json({ error: 'No se pudieron cargar los enlaces. Verifica que la migración esté aplicada.' }, { status: 500 })
+    return NextResponse.json({ error: 'No se pudieron cargar los enlaces. Intenta de nuevo.' }, { status: 500 })
   }
 }
 
