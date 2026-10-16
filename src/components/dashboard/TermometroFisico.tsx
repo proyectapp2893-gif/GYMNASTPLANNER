@@ -13,7 +13,7 @@ export default function TermometroFisicoCard({ metricas }: TermometroProps) {
       {/* Cabecera de la Tarjeta */}
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
-          Termómetro Físico
+          Seguimiento físico
         </h3>
         <div className="bg-rose-50 p-1.5 rounded-lg">
           <TrendingUp className="w-4 h-4 text-rose-500" />
@@ -52,17 +52,17 @@ export default function TermometroFisicoCard({ metricas }: TermometroProps) {
             </div>
             <div>
               <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider mb-1">
-                Base física disponible
+                Registros disponibles
               </h4>
               <p className="text-[11px] font-medium text-emerald-700/80 leading-snug">
-                Cada promedio usa el último registro disponible y evita duplicar evaluaciones de una misma gimnasta.
+                Cada promedio usa el último registro disponible por prueba y gimnasta. No determina aptitud ni carga individual.
               </p>
             </div>
           </div>
         </div>
       ) : (
         <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 mt-auto text-center">
-             <p className="text-xs font-medium text-slate-500">Registra test físicos para ver recomendaciones.</p>
+             <p className="text-xs font-medium text-slate-500">Registra test físicos para ver el seguimiento del grupo.</p>
         </div>
       )}
 

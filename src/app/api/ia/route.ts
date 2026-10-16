@@ -11,7 +11,7 @@ import {
 } from '../../../lib/ai-helpers'
 import { generateGeminiTextRest } from '../../../lib/gemini-rest'
 import { getAuthenticatedClub } from '../../../lib/supabase-server'
-import { summarizePhysicalTestsForAI } from '../../../lib/physical-tests'
+import { summarizeTeamAssessments, type AssessmentSession } from '../../../lib/physical-assessments/team-context'
 import { getCompetitionProximityForDate } from '../../../lib/sports-planning'
 import { getApprovedSportsKnowledgeContext } from '../../../lib/sports-governance/context'
 
@@ -127,20 +127,25 @@ export async function POST(request: Request) {
         }
       }
 
-      // --- Lógica original de Test Físicos intacta ---
-      const { data: atletas } = await supabase.from('atletas').select('id').eq('grupo_id', grupoId).eq('club_id', clubId)
+      const { data: atletas } = await supabase.from('atletas').select('id').eq('grupo_id', grupoId).eq('club_id', clubId).is('deleted_at', null)
       if (atletas && atletas.length > 0) {
         const atletaIds = atletas.map((a: { id: string }) => a.id)
-        const { data: evaluaciones } = await supabase.from('evaluaciones_fisicas').select('resultados').eq('club_id', clubId).in('atleta_id', atletaIds).order('created_at', { ascending: false }).limit(10)
-
+        const assessmentDate = fechaSesionActual && /^\d{4}-\d{2}-\d{2}$/.test(fechaSesionActual)
+          ? fechaSesionActual : new Date().toISOString().slice(0, 10)
+        const windowStart = new Date(`${assessmentDate}T12:00:00Z`)
+        windowStart.setUTCDate(windowStart.getUTCDate() - 180)
+        const { data: evaluaciones, error: assessmentError } = await supabase.from('sesiones_pruebas_fisicas')
+          .select('atleta_id,fecha,resultados_pruebas_fisicas(prueba_id,valor,unidad,catalogo_pruebas_fisicas(nombre,mayor_es_mejor))')
+          .eq('club_id', clubId).in('atleta_id', atletaIds).is('deleted_at', null)
+          .gte('fecha', windowStart.toISOString().slice(0, 10)).lte('fecha', assessmentDate)
+          .order('fecha', { ascending: false }).limit(500)
+        if (assessmentError) console.error('No se pudieron consultar los test físicos:', assessmentError)
         if (evaluaciones && evaluaciones.length > 0) {
-          const resumenResultados = summarizePhysicalTestsForAI(evaluaciones)
+          const resumenResultados = summarizeTeamAssessments(evaluaciones as AssessmentSession[], atletas.length)
           contextoTestFisicos = `
-            TEST FISICOS RECIENTES DEL GRUPO:
+            TEST FÍSICOS DEL GRUPO (últimos 180 días, hasta la fecha de la sesión):
             ${JSON.stringify(resumenResultados)}
-            
-            Estos resultados son indicadores internos y tendencias, no baremos clínicos ni normas universales.
-            Úsalos para comparar la evolución del grupo y señalar datos que requieren revisión del entrenador.
+            Compara solo la misma prueba en la misma gimnasta y unidad. La media describe al grupo evaluado; no indica preparación, diagnóstico ni respuesta individual. Considera cobertura y antigüedad. No aumentes o reduzcas automáticamente la carga por estos datos.
           `
         }
       }
@@ -153,6 +158,11 @@ export async function POST(request: Request) {
 
     const catalogoOrdenado = [...catalogoCompleto].sort((a, b) => (recentUsage.get(a.id) || 0) - (recentUsage.get(b.id) || 0))
     const catalogoPrompt = limitCatalogForPrompt(catalogoOrdenado, enfoqueDia || objetivo, 80)
+
+    if (isSingle && isRecord(ejercicioUnico) && typeof ejercicioUnico.id === 'string'
+      && !catalogoCompleto.some(item => item.id === ejercicioUnico.id)) {
+      return NextResponse.json({ error: 'Ejercicio no autorizado para este club' }, { status: 403 })
+    }
 
     if (!apiKey) {
       return NextResponse.json(buildFallbackSession(catalogoOrdenado, objetivo, enfoqueDia, tipoSesion, cargaDia))

@@ -2,12 +2,17 @@ export type ReadinessExercise={id:string;name:string;category:string|null;impact
 export type ReadinessContext={stageName:string|null;stageReviewedAt:string|null;latestCheckin:{date:string;readiness:number;stress:number;confidence:number;reportedFear:boolean}|null;restrictions:Array<{bodyArea:string;adaptations:string|null}>;masteredSkills:string[]}
 export type ReadinessFinding={code:string;level:'info'|'review';title:string;detail:string;exerciseId:string|null}
 
-export function assessSessionReadiness(context:ReadinessContext,exercises:ReadinessExercise[]):ReadinessFinding[]{
+export function assessSessionReadiness(context:ReadinessContext,exercises:ReadinessExercise[],sessionDate=new Date().toISOString().slice(0,10),validDays=7):ReadinessFinding[]{
   const findings:ReadinessFinding[]=[]
   if(!context.stageName)findings.push({code:'stage_missing',level:'info',title:'Etapa de desarrollo pendiente',detail:'Confirma la etapa individual antes de utilizarla para adaptar progresiones.',exerciseId:null})
   const checkin=context.latestCheckin
-  if(checkin?.reportedFear)findings.push({code:'fear_reported',level:'review',title:'Miedo o inseguridad reportada',detail:'Conversa con la gimnasta y adapta el objetivo antes de publicar.',exerciseId:null})
-  if(checkin&&(checkin.readiness<=2||checkin.stress>=4))findings.push({code:'low_readiness',level:'review',title:'Disposición requiere revisión',detail:`Último registro: disposición ${checkin.readiness}/5 y estrés ${checkin.stress}/5.`,exerciseId:null})
+  const sessionDay=Date.parse(`${sessionDate}T12:00:00Z`)
+  const checkinDay=checkin?Date.parse(`${checkin.date}T12:00:00Z`):NaN
+  const daysOld=(sessionDay-checkinDay)/86400000
+  const isCurrent=checkin&&Number.isFinite(daysOld)&&daysOld>=0&&daysOld<=validDays
+  if(checkin&&!isCurrent)findings.push({code:'checkin_stale',level:'info',title:'Actualizar registro de bienestar',detail:`El registro del ${checkin.date} no describe necesariamente el estado para esta sesión.`,exerciseId:null})
+  if(isCurrent&&checkin.reportedFear)findings.push({code:'fear_reported',level:'review',title:'Miedo o inseguridad reportada',detail:'Conversa con la gimnasta y adapta el objetivo antes de publicar.',exerciseId:null})
+  if(isCurrent&&(checkin.readiness<=2||checkin.stress>=4))findings.push({code:'low_readiness',level:'review',title:'Disposición requiere revisión',detail:`Registro del ${checkin.date}: disposición ${checkin.readiness}/5 y estrés ${checkin.stress}/5.`,exerciseId:null})
   const mastered=new Set(context.masteredSkills.map(normalize))
   for(const exercise of exercises){
     const missing=exercise.prerequisites.filter(item=>!mastered.has(normalize(item)))
