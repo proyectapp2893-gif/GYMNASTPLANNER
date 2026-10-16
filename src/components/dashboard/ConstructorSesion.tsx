@@ -9,6 +9,7 @@ import { getCompetitionProximityForDate, getSessionTimeDistribution } from '../.
 import { getSessionDayProfile } from '../../lib/session-focus'
 import { exerciseMatchesSessionSection } from '../../lib/session-exercise-filter'
 import { canonicalExerciseCategory, normalizeExerciseFacet } from '../../lib/exercise-facets'
+import type { WeeklySessionProposal } from '../../lib/weekly-session-proposals'
 import Image from 'next/image'
 
 const parsearFecha = (fechaStr: string) => {
@@ -67,6 +68,7 @@ interface ConstructorSesionProps {
   horaDia?: string
   aparatosDia?: string
   cargaDia?: { fecha: string; volumen: number; intensidad: number } | null
+  weeklyProposal?: { date: string; exercises: WeeklySessionProposal } | null
   onSessionSaved?: () => void
 }
 
@@ -106,6 +108,55 @@ const clonarColumnas = (columnas: ColumnasSesion): ColumnasSesion => {
   ) as ColumnasSesion
 }
 
+function columnsFromSuggestion(
+  suggestion: IaSesionResponse,
+  catalog: EjercicioSesion[],
+  isDance: boolean,
+  apparatus1: string,
+  apparatus2: string,
+): ColumnasSesion {
+  const columns = crearColumnasVacias()
+  const usedIds = new Set<string>()
+  const resolve = (items: IaEjercicioItem[] = []) => items.flatMap(item => {
+    const id = typeof item === 'string' ? item : item.id
+    const exercise = catalog.find(entry => entry.id === id)
+    if (!exercise || !id || usedIds.has(id)) return []
+    usedIds.add(id)
+    return [{ ...exercise, dosificacion: typeof item === 'string' ? null : item.dosificacion }]
+  })
+
+  const warmup = resolve(suggestion.calentamiento)
+  columns.calentamiento_general = warmup.slice(0, Math.ceil(warmup.length / 2))
+  columns.calentamiento_especifico = warmup.slice(Math.ceil(warmup.length / 2))
+
+  for (const exercise of resolve(suggestion['prep-fisica'])) {
+    const text = `${exercise.contenido} ${exercise.categoria || ''} ${exercise.descripcion || ''}`.toLowerCase()
+    const section = ['brazo', 'flexi', 'dominada', 'hombro', 'empuje', 'asimétricas'].some(term => text.includes(term))
+      ? 'prep_fisica_superior'
+      : ['pierna', 'salto', 'rana', 'sentadilla', 'zancada'].some(term => text.includes(term))
+        ? 'prep_fisica_inferior' : 'prep_fisica_core'
+    columns[section].push(exercise)
+  }
+
+  for (const [index, exercise] of resolve(suggestion.tecnico).entries()) {
+    const section = isDance
+      ? index % 2 === 0 ? 'tecnico_aparato1' : 'tecnico_aparato2'
+      : exercise.aparato === apparatus2 ? 'tecnico_aparato2' : 'tecnico_aparato1'
+    columns[section].push(exercise)
+  }
+
+  for (const exercise of resolve(suggestion.rutinas)) {
+    columns[(exercise.categoria || '').toLowerCase().includes('completa') ? 'rutinas_completas' : 'rutinas_mitades'].push(exercise)
+  }
+
+  const flexibility = resolve(suggestion.flexibilidad)
+  columns.flexibilidad_activa = flexibility.slice(0, Math.ceil(flexibility.length / 2))
+  columns.flexibilidad_pasiva = flexibility.slice(Math.ceil(flexibility.length / 2))
+  columns.cierre_elongacion = resolve(suggestion.cierre)
+  columns.banco = catalog.filter(exercise => !usedIds.has(exercise.id))
+  return columns
+}
+
 const aparatosMenu = [
   { nombre: 'Todos los Aparatos', Icono: Globe },
   { nombre: 'Suelo', Icono: Maximize },
@@ -127,6 +178,7 @@ export default function ConstructorSesion({
   horaDia = '',
   aparatosDia = '',
   cargaDia = null,
+  weeklyProposal = null,
   onSessionSaved,
 }: ConstructorSesionProps) {
   
@@ -290,7 +342,7 @@ export default function ConstructorSesion({
           if (data.fecha_competencia) setFechaCompetenciaPrincipal(data.fecha_competencia);
           if (data.horario_semanal && Array.isArray(data.horario_semanal)) {
             // Contamos cuántos días a la semana están configurados
-            setDiasEntrenamiento(data.horario_semanal.length || 6);
+            setDiasEntrenamiento(new Set(data.horario_semanal.map(item => item.dia)).size || 6);
           }
         }
       } catch (error) {
@@ -349,10 +401,12 @@ export default function ConstructorSesion({
 
   useEffect(() => {
     if (todosLosEjercicios.length === 0 || !fechaExactaDia || !clubId) return;
+    const controller = new AbortController()
     const cargarSesionDelDia = async () => {
       setCargandoDia(true)
-      const fechaParseada = parsearFecha(fechaExactaDia);
-      const objetivoBuscado = `${objetivoFase} - ${fechaExactaDia}`;
+      try {
+        const fechaParseada = parsearFecha(fechaExactaDia);
+        const objetivoBuscado = `${objetivoFase} - ${fechaExactaDia}`;
 
       const params = new URLSearchParams({
         grupoId,
@@ -361,7 +415,7 @@ export default function ConstructorSesion({
       })
       if (fechaParseada) params.set('fechaCalendario', fechaParseada)
 
-      const response = await fetch(`/api/sesiones?${params.toString()}`)
+      const response = await fetch(`/api/sesiones?${params.toString()}`, { signal: controller.signal })
       const result = await response.json() as { session?: { id: string; ejercicios?: unknown } | null; error?: string }
       if (!response.ok) throw new Error(result.error || 'No se pudo cargar la sesión')
       const sesionCompatible = result.session;
@@ -397,13 +451,21 @@ export default function ConstructorSesion({
         setHaySesionParaGuardar(false)
       } else {
         setSesionId(null) 
-        setColumnas(crearColumnasVacias([...todosLosEjercicios]))
-        setHaySesionParaGuardar(false)
+        const proposal = weeklyProposal?.date === fechaParseada ? weeklyProposal.exercises : null
+        setColumnas(proposal
+          ? columnsFromSuggestion(proposal, todosLosEjercicios, perfilDia.kind === 'dance_choreography', nombreAparato1, nombreAparato2)
+          : crearColumnasVacias([...todosLosEjercicios]))
+        setHaySesionParaGuardar(Boolean(proposal))
       }
-      setCargandoDia(false)
+      } catch (cause) {
+        if (!controller.signal.aborted) mostrarNotificacion(cause instanceof Error ? cause.message : 'No se pudo cargar la sesión', 'error')
+      } finally {
+        if (!controller.signal.aborted) setCargandoDia(false)
+      }
     }
-    cargarSesionDelDia()
-  }, [fechaExactaDia, objetivoFase, nivelSeleccionado, todosLosEjercicios, clubId, grupoId])
+    void cargarSesionDelDia()
+    return () => controller.abort()
+  }, [fechaExactaDia, objetivoFase, nivelSeleccionado, todosLosEjercicios, clubId, grupoId, weeklyProposal, perfilDia.kind, nombreAparato1, nombreAparato2])
 
   const mostrarNotificacion = (mensaje: string, tipo: 'exito' | 'error') => {
     setNotificacion({ mostrar: true, mensaje, tipo })
@@ -558,6 +620,7 @@ export default function ConstructorSesion({
         })
       })
       const iaSugerencia = await response.json() as IaSesionResponse
+      if (!response.ok || iaSugerencia.error) throw new Error(iaSugerencia.error || 'No se pudo generar la sesión')
       const nuevasColumnas = clonarColumnas(columnas)
       const idsEnUso = new Set<string>()
 
@@ -792,7 +855,7 @@ export default function ConstructorSesion({
               </button>
 
               <button onClick={autocompletarSesion} disabled={isGenerating} className={`w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all ${isGenerating ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-gradient-to-r from-rose-500 to-purple-600 text-white hover:opacity-90 hover:shadow-lg'}`}>
-                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Calculando...</> : <>✨ Distribuir Cargas</>}
+                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Calculando...</> : <>✨ Generar entrenamiento del día</>}
               </button>
             </div>
           </div>

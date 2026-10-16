@@ -13,6 +13,7 @@ import MonthlyReportExport from '../../components/dashboard/MonthlyReportExport'
 import { ArrowLeft, CalendarDays, ChevronRight, Clock3, LayoutDashboard, Layers3, Loader2, Settings, Trophy, Users } from 'lucide-react'
 import { calculateCurrentWeek, getTotalWeeks, getWeekPlan, type PlanningConfig } from '../../lib/sports-planning'
 import { getWeeklyLoadDays, type TrainingDay } from '../../lib/weekly-load-planning'
+import type { WeeklySessionProposal } from '../../lib/weekly-session-proposals'
 import type { Grupo } from '../../lib/types'
 import Link from 'next/link'
 
@@ -60,6 +61,7 @@ export default function DashboardPlanificacion() {
   const [horaDia, setHoraDia] = useState('')
   const [aparatosDia, setAparatosDia] = useState('')
   const [weeklyRefresh, setWeeklyRefresh] = useState(0)
+  const [selectedWeeklyProposal, setSelectedWeeklyProposal] = useState<{ date: string; exercises: WeeklySessionProposal } | null>(null)
 
   useEffect(() => {
     const cargarGrupos = async () => {
@@ -91,6 +93,7 @@ export default function DashboardPlanificacion() {
     const plan=configuraciones[grupo.id]||null
     setGrupoSeleccionado(grupo)
     setConfiguracion(plan)
+    setSelectedWeeklyProposal(null)
     if(plan?.fecha_inicio){
       const hoy=getColombiaDate()
       const semanaCalculada=calculateCurrentWeek(plan,hoy)
@@ -106,12 +109,13 @@ export default function DashboardPlanificacion() {
 
   const volverAGrupos=()=>{setGrupoSeleccionado(null);setConfiguracion(null)}
 
-  const seleccionarDia = useCallback((dia: string, enfoque: string, fechaExacta: string, hora: string, aparatos: string) => {
+  const seleccionarDia = useCallback((dia: string, enfoque: string, fechaExacta: string, hora: string, aparatos: string, proposal?: { date: string; exercises: WeeklySessionProposal } | null) => {
     setDiaSeleccionado(dia)
     setEnfoqueDelDia(enfoque)
     setFechaExactaDia(fechaExacta)
     setHoraDia(hora)
     setAparatosDia(aparatos)
+    setSelectedWeeklyProposal(proposal || null)
   }, [])
 
   return (
@@ -149,7 +153,7 @@ export default function DashboardPlanificacion() {
             configuracion={configuracion}
             semanaSeleccionada={semanaNum} 
             onSeleccionarSemana={(semana: number, objetivo: string) => {
-              setSemanaNum(semana); setSemanaActual(`Semana ${semana}`); setObjetivoFase(objetivo);
+              setSemanaNum(semana); setSemanaActual(`Semana ${semana}`); setObjetivoFase(objetivo); setSelectedWeeklyProposal(null);
             }} 
           />
           
@@ -170,7 +174,9 @@ export default function DashboardPlanificacion() {
             onSeleccionarDia={seleccionarDia}
           />
           <DistribucionSemanal
+            key={`${grupoSeleccionado.id}:${semanaNum}`}
             grupoId={grupoSeleccionado.id}
+            nivel={grupoSeleccionado.nivel}
             configuracion={configuracion}
             semanaNum={semanaNum}
             horario={configuracion.horario_semanal || []}
@@ -190,6 +196,7 @@ export default function DashboardPlanificacion() {
             horaDia={horaDia} 
             aparatosDia={aparatosDia}
             cargaDia={getWeeklyLoadDays(configuracion, semanaNum, configuracion.horario_semanal || []).find(day => day.dia === diaSeleccionado) || null}
+            weeklyProposal={selectedWeeklyProposal}
             onSessionSaved={() => setWeeklyRefresh(value => value + 1)}
           /></div>
         </>

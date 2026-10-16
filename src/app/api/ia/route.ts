@@ -39,6 +39,7 @@ const aiRequestSchema = z.object({
   diasEntrenamiento: z.coerce.number().int().min(1).max(7).default(6),
   fechaSesionActual: z.string().nullable().optional(),
   cargaDia: z.object({ volumen: z.number().min(0).max(100), intensidad: z.number().min(0).max(100) }).optional(),
+  ejerciciosPropuestosPrevios: z.array(z.string().uuid()).max(100).default([]),
 })
 
 export async function POST(request: Request) {
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Entrada inválida', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual, cargaDia } = parsed.data
+    const { grupoId, nivel, objetivo, semana, enfoqueDia, aparatosDia, tipoSesion, horario, isSingle, ejercicioUnico, nombreClub, competenciasSecundarias, diasEntrenamiento, fechaSesionActual, cargaDia, ejerciciosPropuestosPrevios } = parsed.data
     const conocimientoAprobado = await getApprovedSportsKnowledgeContext(['seguridad','carga','tecnica','recuperacion','bienestar','competencia'])
     const proximidadCompetencia = getCompetitionProximityForDate(
       fechaSesionActual,
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
       if (!data || data.length < pageSize) break
     }
     const recentUsage = new Map<string, number>()
+    for (const id of ejerciciosPropuestosPrevios) recentUsage.set(id, (recentUsage.get(id) || 0) + 1)
     const recentSessions: Array<{ fecha: string; objetivo: string; volumen: number | null; intensidad: number | null; exerciseCount: number }> = []
 
     let contextoTestFisicos = "No hay evaluaciones físicas previas."
@@ -224,6 +226,7 @@ export async function POST(request: Request) {
       ${cargaDia ? `- Objetivo relativo para este día: volumen ${cargaDia.volumen}/100 e intensidad ${cargaDia.intensidad}/100. Ajusta la dosificación al microciclo y al estado del grupo; son objetivos de planificación, no carga realizada.` : ''}
       - Sesiones anteriores guardadas, de reciente a antigua: ${JSON.stringify(recentSessions)}
       - IDs de ejercicios usados recientemente y número de apariciones: ${JSON.stringify(Object.fromEntries(recentUsage))}
+      - Algunos IDs provienen de propuestas anteriores de esta misma semana aún sin guardar. Considera variedad, sin eliminar básicos necesarios.
       - Continúa la progresión del grupo y alterna estímulos y recuperación. Evita repetir ejercicios recientes cuando haya alternativas adecuadas para el mismo objetivo; conserva los básicos necesarios.
       ${indicacionCompetencia ? `- ${indicacionCompetencia}` : ''}
       ${contextoInventario}
